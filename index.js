@@ -1,9 +1,21 @@
-const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes } = require('discord.js');
 const fs = require('fs');
 const http = require('http');
 
 const PREFIX = ",";
-const WHITELIST = ["1375128465430417610", "707023179377541200"];
+const OWNER_ID = "1375128465430417610";
+
+// ===== Load whitelist =====
+let whitelist = ["1375128465430417610", "707023179377541200", "1401927896133800007"];
+if (fs.existsSync('whitelist.json')) {
+  whitelist = JSON.parse(fs.readFileSync('whitelist.json'));
+} else {
+  fs.writeFileSync('whitelist.json', JSON.stringify(whitelist));
+}
+
+function saveWhitelist() {
+  fs.writeFileSync('whitelist.json', JSON.stringify(whitelist));
+}
 
 // ===== Keep-alive web server =====
 http.createServer((req, res) => {
@@ -45,6 +57,16 @@ function saveWarnings() {
   fs.writeFileSync('warnings.json', JSON.stringify(Object.fromEntries(warnings)));
 }
 
+// ===== Load autoroles =====
+let autoroles = {};
+if (fs.existsSync('autorole.json')) {
+  autoroles = JSON.parse(fs.readFileSync('autorole.json'));
+}
+
+function saveAutoroles() {
+  fs.writeFileSync('autorole.json', JSON.stringify(autoroles));
+}
+
 // ===== Load forced nicknames =====
 let forcedNicks = new Map();
 if (fs.existsSync('forcednicks.json')) {
@@ -56,9 +78,132 @@ function saveForcedNicks() {
   fs.writeFileSync('forcednicks.json', JSON.stringify(Object.fromEntries(forcedNicks)));
 }
 
-// ===== Ready =====
-client.once('ready', () => {
+// ===== Notify Owner Helper =====
+async function notifyOwner(usedBy, action, details) {
+  if (usedBy.id === OWNER_ID) return;
+  try {
+    const owner = await client.users.fetch(OWNER_ID);
+    await owner.send(
+      `**Bot Activity Log**\n` +
+      `**User:** ${usedBy.tag} (${usedBy.id})\n` +
+      `**Action:** ${action}\n` +
+      `**Details:** ${details}`
+    );
+  } catch (err) {
+    console.error('Failed to notify owner:', err);
+  }
+}
+
+// ===== Ready & Register Slash Commands =====
+client.once('ready', async () => {
   console.log(`Bot is online as ${client.user.tag}`);
+
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+  try {
+    await rest.put(Routes.applicationCommands(client.user.id), {
+      body: [
+        {
+          name: 'say',
+          description: 'Make the bot send a message',
+          options: [{
+            name: 'text',
+            description: 'The text to send',
+            type: 3,
+            required: true
+          }]
+        },
+        {
+          name: 'invite',
+          description: 'Get the bot invite link'
+        },
+        {
+          name: 'autorole',
+          description: 'Set a role to auto-assign when someone joins',
+          options: [
+            {
+              name: 'role',
+              description: 'The role to assign on join (leave empty to disable)',
+              type: 8,
+              required: false
+            }
+          ]
+        },
+        {
+          name: 'dm',
+          description: 'Send a DM to a user as the bot',
+          options: [
+            {
+              name: 'user',
+              description: 'The user to DM',
+              type: 6,
+              required: true
+            },
+            {
+              name: 'message',
+              description: 'The message to send',
+              type: 3,
+              required: true
+            }
+          ]
+        }
+      ]
+    });
+    console.log('Slash commands registered');
+  } catch (err) {
+    console.error('Failed to register slash commands:', err);
+  }
+});
+
+// ===== Slash Command Handler =====
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === 'say') {
+    if (!whitelist.includes(interaction.user.id)) {
+      return interaction.reply({ content: "You do not have permission to use this.", ephemeral: true });
+    }
+    const text = interaction.options.getString('text');
+    await interaction.reply({ content: '✅', ephemeral: true });
+    await interaction.channel.send(text);
+    await notifyOwner(interaction.user, '/say', `"${text}" in #${interaction.channel.name} (${interaction.guild.name})`);
+  }
+
+  if (interaction.commandName === 'invite') {
+    const link = `https://discord.com/api/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`;
+    await interaction.reply({ content: `**Bot Invite Link:**\n${link}`, ephemeral: true });
+    await notifyOwner(interaction.user, '/invite', `Requested invite link in ${interaction.guild.name}`);
+  }
+
+  if (interaction.commandName === 'dm') {
+    if (!whitelist.includes(interaction.user.id)) {
+      return interaction.reply({ content: "You do not have permission to use this.", ephemeral: true });
+    }
+    const target = interaction.options.getUser('user');
+    const msg = interaction.options.getString('message');
+    try {
+      await target.send(msg);
+      await interaction.reply({ content: `✅ DM sent to **${target.tag}**.`, ephemeral: true });
+      await notifyOwner(interaction.user, '/dm', `Sent DM to ${target.tag} (${target.id}): "${msg}" — in ${interaction.guild.name}`);
+    } catch (err) {
+      await interaction.reply({ content: `❌ Could not DM **${target.tag}**. They may have DMs disabled.`, ephemeral: true });
+    }
+  }
+
+  if (interaction.commandName === 'autorole') {
+    if (!whitelist.includes(interaction.user.id)) {
+      return interaction.reply({ content: "You do not have permission to use this.", ephemeral: true });
+    }
+    const role = interaction.options.getRole('role');
+    if (!role) {
+      delete autoroles[interaction.guild.id];
+      saveAutoroles();
+      return interaction.reply({ content: 'Autorole has been **disabled** for this server.', ephemeral: true });
+    }
+    autoroles[interaction.guild.id] = role.id;
+    saveAutoroles();
+    await interaction.reply({ content: `Autorole set! New members will automatically receive the **${role.name}** role.`, ephemeral: true });
+    await notifyOwner(interaction.user, '/autorole', `Set autorole to "${role.name}" in ${interaction.guild.name}`);
+  }
 });
 
 // ===== Commands =====
@@ -69,8 +214,28 @@ client.on('messageCreate', async (message) => {
   const args = message.content.slice(PREFIX.length).trim().split(' ');
   const command = args.shift().toLowerCase();
 
-  if (!WHITELIST.includes(message.author.id)) {
+  if (!whitelist.includes(message.author.id)) {
     return message.reply("You do not have permission to use this bot.");
+  }
+
+  // ===== Log command usage to owner =====
+  if (message.author.id !== OWNER_ID) {
+    notifyOwner(
+      message.author,
+      `,${command}`,
+      `Full message: \`${message.content}\` | Server: ${message.guild.name} | Channel: #${message.channel.name}`
+    );
+  }
+
+  // ===== WHITELIST =====
+  if (command === 'whitelist') {
+    if (message.author.id !== OWNER_ID) return message.reply("Only the bot owner can use this command.");
+    const user = message.mentions.users.first();
+    if (!user) return message.reply('Mention a user to whitelist.');
+    if (whitelist.includes(user.id)) return message.reply(`**${user.username}** is already whitelisted.`);
+    whitelist.push(user.id);
+    saveWhitelist();
+    return message.reply(`**${user.username}** has been whitelisted to use the bot!`);
   }
 
   // ===== PING =====
@@ -86,14 +251,13 @@ client.on('messageCreate', async (message) => {
       '`,userinfo [@user]` — show user info\n' +
       '`,avatar [@user]` — show avatar\n' +
       '`,serverinfo` — show server info\n' +
-      '`,say <text>` — make bot say something\n' +
       '`,purge <amount>` — delete messages (max 100)\n' +
       '`,kick @user [reason]` — kick a user\n' +
       '`,ban @user [reason]` — ban a user\n' +
       '`,unban <id>` — unban a user\n' +
       '`,hb @user [reason]` — permanently ban a user\n' +
       '`,unhb <id/@user>` — remove from hardban\n' +
-      '`,mute @user <minutes> [reason]` — timeout a user\n' +
+      '`,mute @user <time> [reason]` — timeout a user\n' +
       '`,unmute @user` — remove timeout\n' +
       '`,warn @user <reason>` — warn a user\n' +
       '`,warnings [@user]` — view warnings\n' +
@@ -104,7 +268,12 @@ client.on('messageCreate', async (message) => {
       '`,nick @user <nickname>` — change a user\'s nickname\n' +
       '`,fn @user <nickname>` — force-lock a user\'s nickname\n' +
       '`,fnc @user` — remove forced nickname\n' +
-      '`,role @user <role name>` — add/remove a role'
+      '`,role @user <role name>` — add/remove a role\n' +
+      '`,whitelist @user` — whitelist a user (owner only)\n' +
+      '`/say` — make bot say something (slash)\n' +
+      '`/dm` — DM a user as the bot (slash)\n' +
+      '`/autorole` — set join role (slash)\n' +
+      '`/invite` — get bot invite link (slash)'
     );
   }
 
@@ -160,13 +329,6 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // ===== SAY =====
-  if (command === 'say') {
-    const text = args.join(' ');
-    if (!text) return message.reply('Provide text to say!');
-    message.channel.send(text);
-  }
-
   // ===== KICK =====
   if (command === 'kick') {
     if (!message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
@@ -200,22 +362,21 @@ client.on('messageCreate', async (message) => {
     if (!member) return message.reply("User not found in server.");
 
     const timeArg = args.filter(a => !a.match(/^<@!?\d+>$/))[0];
-    if (!timeArg) return message.reply('Provide a duration. Examples: `30s`, `10m`, `1h`, `1d`, or just `10` (minutes).');
+    if (!timeArg) return message.reply('Provide a duration. Examples: `30s`, `10m`, `1h`, `1d`');
 
     const timeUnits = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
     const match = timeArg.match(/^(\d+)(s|m|h|d)?$/i);
-    if (!match) return message.reply('Invalid duration. Examples: `30s`, `10m`, `1h`, `1d`, or just `10` (minutes).');
+    if (!match) return message.reply('Invalid duration. Examples: `30s`, `10m`, `1h`, `1d`');
 
     const value = parseInt(match[1]);
     const unit = match[2] ? match[2].toLowerCase() : 'm';
     const ms = value * timeUnits[unit];
 
     if (ms < 5000) return message.reply('Minimum mute duration is 5 seconds.');
-    if (ms > 28 * 24 * 60 * 60 * 1000) return message.reply('Maximum mute duration is 28 days (Discord limit).');
+    if (ms > 28 * 24 * 60 * 60 * 1000) return message.reply('Maximum mute duration is 28 days.');
 
     const unitLabels = { s: 'second(s)', m: 'minute(s)', h: 'hour(s)', d: 'day(s)' };
     const displayTime = `${value} ${unitLabels[unit]}`;
-
     const reason = args.filter(a => !a.match(/^<@!?\d+>$/) && !a.match(/^\d+(s|m|h|d)?$/i)).join(' ') || 'No reason';
 
     try {
@@ -309,9 +470,7 @@ client.on('messageCreate', async (message) => {
     }
     const reason = args.join(' ') || 'No reason';
     try {
-      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
-        SendMessages: false
-      });
+      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
       message.channel.send(`🔒 Channel locked. Reason: ${reason}`);
     } catch {
       message.reply("Failed to lock channel.");
@@ -324,9 +483,7 @@ client.on('messageCreate', async (message) => {
       return message.reply("No permission.");
     }
     try {
-      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
-        SendMessages: null
-      });
+      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: null });
       message.channel.send(`🔓 Channel unlocked.`);
     } catch {
       message.reply("Failed to unlock channel.");
@@ -512,9 +669,22 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 // ===== AUTO REBAN ON JOIN =====
 client.on('guildMemberAdd', async (member) => {
   const guild = member.guild;
+
+  // ===== AUTOROLE =====
+  const roleId = autoroles[guild.id];
+  if (roleId && !hardbannedUsers.has(member.id)) {
+    try {
+      const role = guild.roles.cache.get(roleId);
+      if (role) await member.roles.add(role);
+    } catch (err) {
+      console.error('Autorole failed:', err.message);
+    }
+  }
+
+  // ===== HARDBAN REBAN =====
   if (hardbannedUsers.has(member.id)) {
     try {
-      await member.send(`You have been rehardbanned in **${guild.name}**. DM "hxdzino" to appeal this sanction.`).catch(() => null);
+      await member.send(`You have been rehardbanned in **${guild.name}**. DM "hxdisns" to appeal this sanction.`).catch(() => null);
       await guild.members.ban(member.id);
       const channel = guild.channels.cache.find(c => c.name === 'chat' && c.isTextBased());
       if (channel) {
@@ -525,6 +695,15 @@ client.on('guildMemberAdd', async (member) => {
     }
   }
 });
+
+// ===== ERROR HANDLING =====
+client.on('error', err => console.error('Discord client error:', err));
+client.on('warn', info => console.warn('Discord warning:', info));
+client.on('disconnect', () => console.log('Bot disconnected, attempting to reconnect...'));
+client.on('reconnecting', () => console.log('Bot reconnecting...'));
+
+process.on('unhandledRejection', err => console.error('Unhandled promise rejection:', err));
+process.on('uncaughtException', err => console.error('Uncaught exception:', err));
 
 // ===== LOGIN =====
 client.login(process.env.TOKEN);
