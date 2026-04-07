@@ -1,6 +1,18 @@
 const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, Partials, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
+
+async function isRealWord(word) {
+  return new Promise((resolve) => {
+    const req = https.get(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
+      (res) => { resolve(res.statusCode === 200); res.resume(); }
+    );
+    req.on('error', () => resolve(false));
+    req.setTimeout(5000, () => { req.destroy(); resolve(false); });
+  });
+}
 
 const PREFIX = ",";
 const OWNER_ID = "1375128465430417610";
@@ -301,6 +313,19 @@ client.on('interactionCreate', async (interaction) => {
     leaveLogChannels[interaction.guild.id] = channel.id;
     saveLeaveLog();
     return interaction.reply({ content: `✅ Leave logs will be sent to ${channel}.`, ephemeral: true });
+  }
+
+  if (interaction.commandName === 'logboosts') {
+    if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: "Only the bot owner can use this.", ephemeral: true });
+    const channel = interaction.options.getChannel('channel');
+    if (!channel) {
+      delete boostLogChannels[interaction.guild.id];
+      saveBoostLog();
+      return interaction.reply({ content: 'Boost logging has been **disabled**.', ephemeral: true });
+    }
+    boostLogChannels[interaction.guild.id] = channel.id;
+    saveBoostLog();
+    return interaction.reply({ content: `✅ Boost logs will be sent to ${channel}.`, ephemeral: true });
   }
 
   if (interaction.commandName === 'active') {
@@ -841,12 +866,15 @@ client.on('messageCreate', async (message) => {
       return message.channel.send('❌ Not enough players joined (need at least 2). Game cancelled.');
     }
 
-    const alphabet = 'abcdefghijklmnoprstw';
+    const commonSingles = ['a','b','c','d','e','f','g','h','i','k','l','m','n','o','p','r','s','t','u','w'];
+    const commonBigrams = ['at','in','on','er','re','st','an','en','or','ed','nd','it','ar','al','le','nt','es','sh','is','ou','ng','ly','ee','oo','tr','pr','pl','gr','br','fr','cl','fl','bl','sp','wh','cr','dr','gl','sc','ck','ll','ss','ff','ch','th'];
+
     function randomLetters() {
-      const count = Math.random() < 0.5 ? 1 : 2;
-      let result = '';
-      for (let i = 0; i < count; i++) result += alphabet[Math.floor(Math.random() * alphabet.length)];
-      return result;
+      if (Math.random() < 0.5) {
+        return commonSingles[Math.floor(Math.random() * commonSingles.length)];
+      } else {
+        return commonBigrams[Math.floor(Math.random() * commonBigrams.length)];
+      }
     }
 
     function getRequired(lastWord) {
@@ -931,6 +959,21 @@ client.on('messageCreate', async (message) => {
           if (currentIndex >= players.length) currentIndex = 0;
         } else {
           await message.channel.send(`❌ <@${currentPlayer.id}> **"${word}"** was already used! Lost a life. ❤️ **${remaining} life remaining.**`);
+          currentIndex++;
+        }
+        continue;
+      }
+
+      const validWord = await isRealWord(word);
+      if (!validWord) {
+        const remaining = lives.get(currentPlayer.id) - 1;
+        lives.set(currentPlayer.id, remaining);
+        if (remaining <= 0) {
+          await message.channel.send(`💀 <@${currentPlayer.id}> **"${word}"** is not a real word! **Eliminated!**`);
+          players.splice(currentIndex, 1);
+          if (currentIndex >= players.length) currentIndex = 0;
+        } else {
+          await message.channel.send(`❌ <@${currentPlayer.id}> **"${word}"** is not a real word! Lost a life. ❤️ **${remaining} life remaining.**`);
           currentIndex++;
         }
         continue;
@@ -1065,6 +1108,19 @@ client.on('guildMemberRemove', async (member) => {
 // ===== AUTO REFORCE NICKNAME =====
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   const key = `${newMember.guild.id}_${newMember.id}`;
+
+  // ===== BOOST DETECTION =====
+  if (!oldMember.premiumSince && newMember.premiumSince) {
+    const boostChannelId = boostLogChannels[newMember.guild.id];
+    if (boostChannelId) {
+      const boostChannel = newMember.guild.channels.cache.get(boostChannelId);
+      if (boostChannel) {
+        const msg = await boostChannel.send(`<@${newMember.id}> has boosted the server!`).catch(() => null);
+        if (msg) await msg.react('❤️').catch(() => null);
+      }
+    }
+  }
+
   if (!forcedNicks.has(key)) return;
   const forcedNick = forcedNicks.get(key);
   if (newMember.nickname !== forcedNick) {
@@ -1093,7 +1149,7 @@ client.on('guildMemberAdd', async (member) => {
         )
         .setFooter({ text: `ID: ${member.id}` })
         .setTimestamp();
-      joinLogChannel.send({ embeds: [embed] }).catch(() => {});
+      joinLogChannel.send({ content: `Welcome to **${guild.name}**, <@${member.id}>! 🎉`, embeds: [embed] }).catch(() => {});
     }
   }
 
