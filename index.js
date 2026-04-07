@@ -11,10 +11,11 @@ app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 // ===== Constants =====
 const OWNER_ID = "1375128465430417610";
 
-// ===== Load data =====
+// ===== Helper to load/save JSON safely =====
 const loadJSON = (file, defaultValue = {}) => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : defaultValue;
-const saveJSON = (file, data) => fs.writeFileSync(file, JSON.stringify(data));
+const saveJSON = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
 
+// ===== Load data =====
 let activeChannels = loadJSON('activechannels.json');
 let logChannels = loadJSON('logchannels.json');
 let joinLogChannels = loadJSON('joinlog.json');
@@ -33,11 +34,11 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel]
 });
 
-// ===== READY =====
+// ===== Ready event and slash commands registration =====
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  // Register slash commands
+  // Register slash commands globally
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
   await rest.put(Routes.applicationCommands(client.user.id), {
     body: [
@@ -56,85 +57,112 @@ client.once('ready', async () => {
   // 12-hour active message loop
   setInterval(() => {
     for (const [guildId, channelId] of Object.entries(activeChannels)) {
-      const guild = client.guilds.cache.get(guildId);
-      const channel = guild?.channels.cache.get(channelId);
-      if (channel) channel.send('Hello guys!').catch(() => {});
+      client.guilds.fetch(guildId).then(guild => {
+        guild.channels.fetch(channelId).then(channel => {
+          if (channel) channel.send('Hello guys!').catch(() => {});
+        }).catch(() => {});
+      }).catch(() => {});
     }
   }, 12 * 60 * 60 * 1000);
 });
 
-// ===== MEMBER JOIN/LEAVE =====
-client.on('guildMemberAdd', member => {
-  // Autorole
-  const roleId = autoroles[member.guild.id];
-  if (roleId) {
-    const role = member.guild.roles.cache.get(roleId);
-    const botMember = member.guild.members.me;
-    if (role && role.position < botMember.roles.highest.position) {
-      member.roles.add(role).catch(err => console.error('Failed to assign autorole:', err));
+// ===== Member join/leave with autorole and logs =====
+client.on('guildMemberAdd', async (member) => {
+  try {
+    // Autorole
+    const roleId = autoroles[member.guild.id];
+    if (roleId) {
+      const role = await member.guild.roles.fetch(roleId);
+      const botMember = await member.guild.members.fetch(client.user.id);
+
+      if (role && role.position < botMember.roles.highest.position) {
+        await member.roles.add(role);
+      } else {
+        console.log(`Autorole skipped for ${member.user.tag} (role missing or too high)`);
+      }
     }
-  }
 
-  // Join log
-  const ch = member.guild.channels.cache.get(joinLogChannels[member.guild.id]);
-  if (ch) ch.send(`${member.user.tag} joined`).catch(() => {});
-});
-
-client.on('guildMemberRemove', member => {
-  const ch = member.guild.channels.cache.get(leaveLogChannels[member.guild.id]);
-  if (ch) ch.send(`${member.user.tag} left`).catch(() => {});
-});
-
-// ===== BOOST LOGGING =====
-client.on('guildMemberUpdate', (oldMember, newMember) => {
-  const channelId = boostLogChannels[newMember.guild.id];
-  if (!channelId) return;
-  const channel = newMember.guild.channels.cache.get(channelId);
-  if (!channel) return;
-
-  if (!oldMember.premiumSince && newMember.premiumSince) {
-    channel.send(`🚀 ${newMember.user.tag} just boosted the server!`).catch(() => {});
-  } else if (oldMember.premiumSince && !newMember.premiumSince) {
-    channel.send(`❌ ${newMember.user.tag} stopped boosting.`).catch(() => {});
+    // Join log
+    const channelId = joinLogChannels[member.guild.id];
+    if (channelId) {
+      const channel = await member.guild.channels.fetch(channelId);
+      if (channel) channel.send(`${member.user.tag} has joined the server!`);
+      else console.log(`Join log channel not found for ${member.guild.name}`);
+    }
+  } catch (err) {
+    console.error('Error in guildMemberAdd:', err);
   }
 });
 
-// ===== DELETED MESSAGE LOG =====
+client.on('guildMemberRemove', async (member) => {
+  try {
+    const channelId = leaveLogChannels[member.guild.id];
+    if (!channelId) return;
+    const channel = await member.guild.channels.fetch(channelId);
+    if (channel) channel.send(`${member.user.tag} has left the server!`);
+  } catch (err) {
+    console.error('Error in guildMemberRemove:', err);
+  }
+});
+
+// ===== Boost logging =====
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  try {
+    const channelId = boostLogChannels[newMember.guild.id];
+    if (!channelId) return;
+    const channel = await newMember.guild.channels.fetch(channelId);
+    if (!channel) return;
+
+    if (!oldMember.premiumSince && newMember.premiumSince) {
+      channel.send(`🚀 ${newMember.user.tag} boosted the server!`);
+    } else if (oldMember.premiumSince && !newMember.premiumSince) {
+      channel.send(`❌ ${newMember.user.tag} stopped boosting.`);
+    }
+  } catch (err) {
+    console.error('Error in boost logging:', err);
+  }
+});
+
+// ===== Deleted message logging =====
 client.on('messageDelete', async message => {
-  if (!message.guild) return;
-  const ch = message.guild.channels.cache.get(logChannels[message.guild.id]);
-  if (!ch) return;
+  try {
+    if (!message.guild) return;
+    const channelId = logChannels[message.guild.id];
+    if (!channelId) return;
 
-  const embed = new EmbedBuilder()
-    .setTitle('Deleted Message')
-    .setColor('Red')
-    .addFields(
-      { name: 'User', value: message.author?.tag || 'Unknown' },
-      { name: 'Content', value: message.content || 'No text' }
-    );
+    const channel = await message.guild.channels.fetch(channelId);
+    if (!channel) return;
 
-  ch.send({ embeds: [embed] }).catch(() => {});
+    const embed = new EmbedBuilder()
+      .setTitle('Deleted Message')
+      .setColor('Red')
+      .addFields(
+        { name: 'User', value: message.author?.tag || 'Unknown' },
+        { name: 'Content', value: message.content || 'No text' }
+      );
+
+    channel.send({ embeds: [embed] });
+  } catch (err) {
+    console.error('Error in messageDelete:', err);
+  }
 });
 
-// ===== COMMANDS =====
+// ===== Slash command handler =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  try {
-    const { commandName, options, guild } = interaction;
+  const { commandName, options, guild } = interaction;
 
-    // /say
+  try {
     if (commandName === 'say') {
       const text = options.getString('text');
       return interaction.reply({ content: text });
     }
 
-    // /invite
     if (commandName === 'invite') {
       return interaction.reply({ content: 'Invite link here' });
     }
 
-    // /dm
     if (commandName === 'dm') {
       const user = options.getUser('user');
       const msg = options.getString('message');
@@ -146,17 +174,16 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // /autorole
     if (commandName === 'autorole') {
       const role = options.getRole('role');
       if (!role) return interaction.reply({ content: 'You must select a role!', ephemeral: true });
 
-      const botMember = guild.members.me;
+      const botMember = await guild.members.fetch(client.user.id);
       if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
         return interaction.reply({ content: 'I need Manage Roles permission!', ephemeral: true });
       }
       if (role.position >= botMember.roles.highest.position) {
-        return interaction.reply({ content: 'I cannot assign a role higher or equal to my highest role.', ephemeral: true });
+        return interaction.reply({ content: 'I cannot assign a role higher than my highest role.', ephemeral: true });
       }
 
       autoroles[guild.id] = role.id;
@@ -164,7 +191,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: `Autorole successfully set to ${role.name}`, ephemeral: true });
     }
 
-    // /logboosts
     if (commandName === 'logboosts') {
       const ch = options.getChannel('channel');
       boostLogChannels[guild.id] = ch.id;
@@ -172,7 +198,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: 'Boost log channel set', ephemeral: true });
     }
 
-    // /logjoins
     if (commandName === 'logjoins') {
       const ch = options.getChannel('channel');
       joinLogChannels[guild.id] = ch.id;
@@ -180,7 +205,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: 'Join log channel set', ephemeral: true });
     }
 
-    // /logleaves
     if (commandName === 'logleaves') {
       const ch = options.getChannel('channel');
       leaveLogChannels[guild.id] = ch.id;
@@ -188,7 +212,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: 'Leave log channel set', ephemeral: true });
     }
 
-    // /active
     if (commandName === 'active') {
       const ch = options.getChannel('channel');
       activeChannels[guild.id] = ch.id;
@@ -196,7 +219,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: 'Active message channel set', ephemeral: true });
     }
 
-    // /logs
     if (commandName === 'logs') {
       const ch = options.getChannel('channel');
       logChannels[guild.id] = ch.id;
@@ -205,12 +227,10 @@ client.on('interactionCreate', async interaction => {
     }
 
   } catch (err) {
-    console.error(err);
-    if (!interaction.replied) {
-      interaction.reply({ content: 'An error occurred.', ephemeral: true });
-    }
+    console.error('Error in slash command:', err);
+    if (!interaction.replied) interaction.reply({ content: 'An error occurred.', ephemeral: true });
   }
 });
 
-// ===== LOGIN =====
+// ===== Login =====
 client.login(process.env.TOKEN);
