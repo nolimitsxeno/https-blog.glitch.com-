@@ -866,24 +866,43 @@ client.on('messageCreate', async (message) => {
       return message.channel.send('❌ Not enough players joined (need at least 2). Game cancelled.');
     }
 
-    const commonSingles = ['a','b','c','d','e','f','g','h','i','k','l','m','n','o','p','r','s','t','u','w'];
-    const commonBigrams = ['at','in','on','er','re','st','an','en','or','ed','nd','it','ar','al','le','nt','es','sh','is','ou','ng','ly','ee','oo','tr','pr','pl','gr','br','fr','cl','fl','bl','sp','wh','cr','dr','gl','sc','ck','ll','ss','ff','ch','th'];
+    const commonSingles = ['a','b','c','d','e','f','g','h','i','k','l','m','n','o','p','r','s','t','u','w','y'];
+    const commonBigrams = [
+      'th','he','in','er','an','re','on','en','at','nd','es','or','is','ar','al','le','it','ed','nt',
+      'ou','sh','st','ch','ha','wa','me','ma','la','te','se','de','li','ti','ne','ra','ri','io',
+      'ss','ll','ee','oo','un','be','ca','co','mo','no','ro','so','fo','go','ho','po',
+      'ab','ad','am','as','bl','br','cl','cr','dr','fl','fr','gl','gr','pl','pr','sc','sk',
+      'sl','sm','sn','sp','sw','tr','tw','wh','ck','ng','ly','ry','ty','ny','my',
+      'ac','ag','ai','ak','ap','av','aw','ax','bo','bu','by','da','di','do','du','dy',
+      'ef','eg','el','em','ep','ev','ew','ex','fa','fe','fi','fu','fy','ga','ge','gi','gu','gy',
+      'ib','ic','id','if','ig','ik','il','im','ip','ir','iv','ix','iy','jo','ju','ka','ke',
+      'ki','ko','ku','ky','lo','lu','mu','na','ni','nu','oc','od','of','og','ok','ol','om',
+      'op','os','ot','ov','ow','ox','oy','pa','pe','pi','pu','py','qu','ru','sa','si','su',
+      'sy','ta','to','tu','ty','ub','uc','ud','ug','uk','ul','um','up','ur','us','ut','uv',
+      'ux','uy','va','ve','vi','vo','vu','vy','wi','wo','wu','wy','ya','ye','yo','yu'
+    ];
 
-    function randomLetters() {
-      if (Math.random() < 0.5) {
-        return commonSingles[Math.floor(Math.random() * commonSingles.length)];
-      } else {
-        return commonBigrams[Math.floor(Math.random() * commonBigrams.length)];
-      }
+    const usedRequired = new Set();
+
+    function pickRandom() {
+      const pool = Math.random() < 0.2 ? commonSingles : commonBigrams;
+      return pool[Math.floor(Math.random() * pool.length)];
     }
 
     function getRequired(lastWord) {
-      if (!lastWord) return randomLetters();
-      if (Math.random() < 0.5) {
-        const count = Math.random() < 0.5 ? 1 : 2;
-        return lastWord.slice(-count);
-      }
-      return randomLetters();
+      let candidate;
+      let attempts = 0;
+      do {
+        if (lastWord && Math.random() < 0.5 && attempts < 5) {
+          const count = Math.random() < 0.5 ? 1 : 2;
+          candidate = lastWord.slice(-count);
+        } else {
+          candidate = pickRandom();
+        }
+        attempts++;
+      } while (usedRequired.has(candidate) && attempts < 15);
+      usedRequired.add(candidate);
+      return candidate;
     }
 
     players = players.sort(() => Math.random() - 0.5);
