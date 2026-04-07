@@ -38,7 +38,30 @@ const client = new Client({
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  // Register slash commands globally
+  // ===== Startup verification =====
+  console.log('Verifying saved channels and autoroles...');
+  for (const [guildId, channelId] of Object.entries(logChannels)) {
+    client.guilds.fetch(guildId).then(guild => {
+      guild.channels.fetch(channelId).then(() => console.log(`Deleted messages log ready: ${channelId} in guild ${guildId}`)).catch(() => {});
+    }).catch(() => {});
+  }
+  for (const [guildId, channelId] of Object.entries(joinLogChannels)) {
+    client.guilds.fetch(guildId).then(guild => {
+      guild.channels.fetch(channelId).then(() => console.log(`Join log ready: ${channelId} in guild ${guildId}`)).catch(() => {});
+    }).catch(() => {});
+  }
+  for (const [guildId, channelId] of Object.entries(leaveLogChannels)) {
+    client.guilds.fetch(guildId).then(guild => {
+      guild.channels.fetch(channelId).then(() => console.log(`Leave log ready: ${channelId} in guild ${guildId}`)).catch(() => {});
+    }).catch(() => {});
+  }
+  for (const [guildId, channelId] of Object.entries(boostLogChannels)) {
+    client.guilds.fetch(guildId).then(guild => {
+      guild.channels.fetch(channelId).then(() => console.log(`Boost log ready: ${channelId} in guild ${guildId}`)).catch(() => {});
+    }).catch(() => {});
+  }
+
+  // ===== Register slash commands globally =====
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
   await rest.put(Routes.applicationCommands(client.user.id), {
     body: [
@@ -50,11 +73,11 @@ client.once('ready', async () => {
       { name: 'logjoins', description: 'Set join log channel', options: [{ name: 'channel', type: 7, description: 'Channel for join logs', required: true }] },
       { name: 'logleaves', description: 'Set leave log channel', options: [{ name: 'channel', type: 7, description: 'Channel for leave logs', required: true }] },
       { name: 'active', description: 'Set active message channel', options: [{ name: 'channel', type: 7, description: 'Channel for active messages', required: true }] },
-      { name: 'logs', description: 'Set deleted message log channel', options: [{ name: 'channel', type: 7, description: 'Channel for deleted messages', required: true }] }
+      { name: 'logs', description: 'Set deleted/edited messages log channel', options: [{ name: 'channel', type: 7, description: 'Channel for logs', required: true }] }
     ]
   });
 
-  // 12-hour active message loop
+  // ===== 12-hour active message loop =====
   setInterval(() => {
     for (const [guildId, channelId] of Object.entries(activeChannels)) {
       client.guilds.fetch(guildId).then(guild => {
@@ -79,12 +102,11 @@ client.on('guildMemberAdd', async (member) => {
       }
     }
 
-    // Join log embed
+    // Join embed
     const channelId = joinLogChannels[member.guild.id];
     if (channelId) {
       const channel = await member.guild.channels.fetch(channelId);
       if (!channel) return;
-
       const embed = new EmbedBuilder()
         .setTitle('Member Joined')
         .setColor('Green')
@@ -94,12 +116,9 @@ client.on('guildMemberAdd', async (member) => {
           { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>` }
         )
         .setTimestamp();
-
       channel.send({ embeds: [embed] });
     }
-  } catch (err) {
-    console.error('Error in guildMemberAdd:', err);
-  }
+  } catch (err) { console.error('guildMemberAdd error:', err); }
 });
 
 client.on('guildMemberRemove', async (member) => {
@@ -108,9 +127,7 @@ client.on('guildMemberRemove', async (member) => {
     if (!channelId) return;
     const channel = await member.guild.channels.fetch(channelId);
     if (channel) channel.send(`${member.user.tag} has left the server!`);
-  } catch (err) {
-    console.error('Error in guildMemberRemove:', err);
-  }
+  } catch (err) { console.error('guildMemberRemove error:', err); }
 });
 
 // ===== Boost logging =====
@@ -126,12 +143,10 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     } else if (oldMember.premiumSince && !newMember.premiumSince) {
       channel.send(`❌ ${newMember.user.tag} stopped boosting.`);
     }
-  } catch (err) {
-    console.error('Error in boost logging:', err);
-  }
+  } catch (err) { console.error('Boost logging error:', err); }
 });
 
-// ===== Deleted message logging =====
+// ===== Deleted and Edited message logging (includes images) =====
 client.on('messageDelete', async message => {
   try {
     if (!message.guild) return;
@@ -147,12 +162,39 @@ client.on('messageDelete', async message => {
       .addFields(
         { name: 'User', value: message.author?.tag || 'Unknown' },
         { name: 'Content', value: message.content || 'No text' }
-      );
+      )
+      .setTimestamp();
+
+    // Include attachments if any
+    if (message.attachments.size > 0) {
+      embed.addFields({ name: 'Attachments', value: message.attachments.map(a => a.url).join('\n') });
+    }
 
     channel.send({ embeds: [embed] });
-  } catch (err) {
-    console.error('Error in messageDelete:', err);
-  }
+  } catch (err) { console.error('messageDelete error:', err); }
+});
+
+client.on('messageUpdate', async (oldMsg, newMsg) => {
+  try {
+    if (!oldMsg.guild || oldMsg.content === newMsg.content) return;
+    const channelId = logChannels[oldMsg.guild.id];
+    if (!channelId) return;
+
+    const channel = await oldMsg.guild.channels.fetch(channelId);
+    if (!channel) return;
+
+    const embed = new EmbedBuilder()
+      .setTitle('Edited Message')
+      .setColor('Orange')
+      .addFields(
+        { name: 'User', value: oldMsg.author?.tag || 'Unknown' },
+        { name: 'Before', value: oldMsg.content || 'No text' },
+        { name: 'After', value: newMsg.content || 'No text' }
+      )
+      .setTimestamp();
+
+    channel.send({ embeds: [embed] });
+  } catch (err) { console.error('messageUpdate error:', err); }
 });
 
 // ===== Slash command handler =====
@@ -199,43 +241,22 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: `Autorole successfully set to ${role.name}`, ephemeral: true });
     }
 
-    if (commandName === 'logboosts') {
+    // ===== Log channel commands =====
+    if (['logboosts','logjoins','logleaves','active','logs'].includes(commandName)) {
       const ch = options.getChannel('channel');
-      boostLogChannels[guild.id] = ch.id;
-      saveJSON('boostlog.json', boostLogChannels);
-      return interaction.reply({ content: 'Boost log channel set', ephemeral: true });
-    }
+      if (!ch) return interaction.reply({ content: 'You must select a channel!', ephemeral: true });
 
-    if (commandName === 'logjoins') {
-      const ch = options.getChannel('channel');
-      joinLogChannels[guild.id] = ch.id;
-      saveJSON('joinlog.json', joinLogChannels);
-      return interaction.reply({ content: 'Join log channel set', ephemeral: true });
-    }
+      if (commandName === 'logboosts') { boostLogChannels[guild.id] = ch.id; saveJSON('boostlog.json', boostLogChannels); }
+      if (commandName === 'logjoins') { joinLogChannels[guild.id] = ch.id; saveJSON('joinlog.json', joinLogChannels); }
+      if (commandName === 'logleaves') { leaveLogChannels[guild.id] = ch.id; saveJSON('leavelog.json', leaveLogChannels); }
+      if (commandName === 'active') { activeChannels[guild.id] = ch.id; saveJSON('activechannels.json', activeChannels); }
+      if (commandName === 'logs') { logChannels[guild.id] = ch.id; saveJSON('logchannels.json', logChannels); }
 
-    if (commandName === 'logleaves') {
-      const ch = options.getChannel('channel');
-      leaveLogChannels[guild.id] = ch.id;
-      saveJSON('leavelog.json', leaveLogChannels);
-      return interaction.reply({ content: 'Leave log channel set', ephemeral: true });
-    }
-
-    if (commandName === 'active') {
-      const ch = options.getChannel('channel');
-      activeChannels[guild.id] = ch.id;
-      saveJSON('activechannels.json', activeChannels);
-      return interaction.reply({ content: 'Active message channel set', ephemeral: true });
-    }
-
-    if (commandName === 'logs') {
-      const ch = options.getChannel('channel');
-      logChannels[guild.id] = ch.id;
-      saveJSON('logchannels.json', logChannels);
-      return interaction.reply({ content: 'Deleted message log channel set', ephemeral: true });
+      return interaction.reply({ content: `Channel set for ${commandName}`, ephemeral: true });
     }
 
   } catch (err) {
-    console.error('Error in slash command:', err);
+    console.error('Slash command error:', err);
     if (!interaction.replied) interaction.reply({ content: 'An error occurred.', ephemeral: true });
   }
 });
