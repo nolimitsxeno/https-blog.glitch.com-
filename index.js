@@ -30,11 +30,12 @@ function saveWhitelist() {
 }
 
 // ===== Keep-alive web server =====
+const PORT = process.env.PORT || 5000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Bot is alive!');
-}).listen(5000, () => {
-  console.log('Keep-alive server running on port 5000');
+}).listen(PORT, () => {
+  console.log(`Keep-alive server running on port ${PORT}`);
 });
 
 const client = new Client({
@@ -378,14 +379,15 @@ client.on('interactionCreate', async (interaction) => {
     if (!whitelist.includes(interaction.user.id)) {
       return interaction.reply({ content: "You do not have permission to use this.", ephemeral: true });
     }
+    await interaction.deferReply({ ephemeral: true });
     const target = interaction.options.getUser('user');
     const msg = interaction.options.getString('message');
     try {
       await target.send(msg);
-      await interaction.reply({ content: `✅ DM sent to **${target.tag}**.`, ephemeral: true });
+      await interaction.editReply({ content: `✅ DM sent to **${target.tag}**.` });
       await notifyOwner(interaction.user, '/dm', `Sent DM to ${target.tag} (${target.id}): "${msg}" — in ${interaction.guild.name}`);
     } catch (err) {
-      await interaction.reply({ content: `❌ Could not DM **${target.tag}**. They may have DMs disabled.`, ephemeral: true });
+      await interaction.editReply({ content: `❌ Could not DM **${target.tag}**. They may have DMs disabled.` });
     }
   }
 
