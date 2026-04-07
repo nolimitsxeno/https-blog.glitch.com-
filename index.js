@@ -1,45 +1,91 @@
-const { Client, GatewayIntentBits, REST, Routes, Partials, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, Partials, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
-const express = require('express');
+const https = require('https');
+const express = require('express'); // ✅ Express for Render
 
-// ===== Express server for Render =====
+// ===== Express server (Render requirement) =====
 const app = express();
 const PORT = process.env.PORT || 5000;
 app.get('/', (req, res) => res.send('Bot is alive!'));
 app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 
-// ===== Constants =====
+// ===== Original helpers and constants =====
+async function isRealWord(word) {
+  return new Promise((resolve) => {
+    const req = https.get(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
+      (res) => { resolve(res.statusCode === 200); res.resume(); }
+    );
+    req.on('error', () => resolve(false));
+    req.setTimeout(5000, () => { req.destroy(); resolve(false); });
+  });
+}
+
+const PREFIX = ",";
 const OWNER_ID = "1375128465430417610";
 
-// ===== JSON helpers =====
-const loadJSON = (file, defaultValue = {}) => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : defaultValue;
-const saveJSON = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
+// ===== Load data files =====
+let whitelist = fs.existsSync('whitelist.json') ? JSON.parse(fs.readFileSync('whitelist.json')) : ["1375128465430417610", "707023179377541200", "1401927896133800007"];
+function saveWhitelist() { fs.writeFileSync('whitelist.json', JSON.stringify(whitelist)); }
 
-// ===== Load data =====
-let whitelist = loadJSON('whitelist.json', [OWNER_ID]);
-let activeChannels = loadJSON('activechannels.json');
-let logChannels = loadJSON('logchannels.json');
-let joinLogChannels = loadJSON('joinlog.json');
-let leaveLogChannels = loadJSON('leavelog.json');
-let boostLogChannels = loadJSON('boostlog.json');
-let autoroles = loadJSON('autorole.json');
+let hardbannedUsers = fs.existsSync('hardbans.json') ? new Map(Object.entries(JSON.parse(fs.readFileSync('hardbans.json')))) : new Map();
+function saveHardbans() { fs.writeFileSync('hardbans.json', JSON.stringify(Object.fromEntries(hardbannedUsers))); }
 
-// ===== Client =====
+let warnings = fs.existsSync('warnings.json') ? new Map(Object.entries(JSON.parse(fs.readFileSync('warnings.json')))) : new Map();
+function saveWarnings() { fs.writeFileSync('warnings.json', JSON.stringify(Object.fromEntries(warnings))); }
+
+let activeChannels = fs.existsSync('activechannels.json') ? JSON.parse(fs.readFileSync('activechannels.json')) : {};
+function saveActiveChannels() { fs.writeFileSync('activechannels.json', JSON.stringify(activeChannels)); }
+
+let logChannels = fs.existsSync('logchannels.json') ? JSON.parse(fs.readFileSync('logchannels.json')) : {};
+function saveLogChannels() { fs.writeFileSync('logchannels.json', JSON.stringify(logChannels)); }
+
+let joinLogChannels = fs.existsSync('joinlog.json') ? JSON.parse(fs.readFileSync('joinlog.json')) : {};
+function saveJoinLog() { fs.writeFileSync('joinlog.json', JSON.stringify(joinLogChannels)); }
+
+let leaveLogChannels = fs.existsSync('leavelog.json') ? JSON.parse(fs.readFileSync('leavelog.json')) : {};
+function saveLeaveLog() { fs.writeFileSync('leavelog.json', JSON.stringify(leaveLogChannels)); }
+
+let boostLogChannels = fs.existsSync('boostlog.json') ? JSON.parse(fs.readFileSync('boostlog.json')) : {};
+function saveBoostLog() { fs.writeFileSync('boostlog.json', JSON.stringify(boostLogChannels)); }
+
+let autoroles = fs.existsSync('autorole.json') ? JSON.parse(fs.readFileSync('autorole.json')) : {};
+function saveAutoroles() { fs.writeFileSync('autorole.json', JSON.stringify(autoroles)); }
+
+let forcedNicks = fs.existsSync('forcednicks.json') ? new Map(Object.entries(JSON.parse(fs.readFileSync('forcednicks.json')))) : new Map();
+function saveForcedNicks() { fs.writeFileSync('forcednicks.json', JSON.stringify(Object.fromEntries(forcedNicks))); }
+
+const activeGames = new Map();
+
+// ===== Notify Owner helper =====
+async function notifyOwner(usedBy, action, details) {
+  if (usedBy.id === OWNER_ID) return;
+  try {
+    const owner = await client.users.fetch(OWNER_ID);
+    await owner.send(
+      `**Bot Activity Log**\n**User:** ${usedBy.tag} (${usedBy.id})\n**Action:** ${action}\n**Details:** ${details}`
+    );
+  } catch (err) {
+    console.error('Failed to notify owner:', err);
+  }
+}
+
+// ===== Client setup =====
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildModeration,
     GatewayIntentBits.MessageContent
   ],
   partials: [Partials.Message, Partials.Channel]
 });
 
-// ===== Ready event =====
-client.once('ready', async () => {
-  console.log(`Logged in as ${client.user.tag}`);
+// ===== clientReady and slash commands registration =====
+client.once('clientReady', async () => {
+  console.log(`Bot is online as ${client.user.tag}`);
 
-  // Register slash commands
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
   try {
     await rest.put(Routes.applicationCommands(client.user.id), {
@@ -52,121 +98,57 @@ client.once('ready', async () => {
         { name: 'logjoins', description: 'Set join log channel', options: [{ name: 'channel', type: 7, required: false }] },
         { name: 'logleaves', description: 'Set leave log channel', options: [{ name: 'channel', type: 7, required: false }] },
         { name: 'active', description: 'Auto message channel', options: [{ name: 'channel', type: 7, required: false }] },
-        { name: 'logs', description: 'Deleted/edited message logs', options: [{ name: 'channel', type: 7, required: false }] },
+        { name: 'logs', description: 'Deleted message logs', options: [{ name: 'channel', type: 7, required: false }] },
         { name: 'unwhitelist', description: 'Remove from whitelist', options: [{ name: 'user', type: 6, required: true }] }
       ]
     });
     console.log('Slash commands registered');
   } catch (err) { console.error(err); }
 
-  // 12-hour active message loop
-  setInterval(() => {
+  // 12-hour active messages
+  setInterval(async () => {
     for (const [guildId, channelId] of Object.entries(activeChannels)) {
-      client.guilds.fetch(guildId).then(guild => {
-        guild.channels.fetch(channelId).then(channel => {
-          if (channel) channel.send('Hello guys!').catch(() => {});
-        }).catch(() => {});
-      }).catch(() => {});
+      try {
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) continue;
+        const channel = guild.channels.cache.get(channelId);
+        if (channel) await channel.send('Hello guys!');
+      } catch {}
     }
   }, 12 * 60 * 60 * 1000);
 });
 
-// ===== Guild member events =====
-client.on('guildMemberAdd', async member => {
-  try {
-    // Autorole
-    const roleId = autoroles[member.guild.id];
-    if (roleId) {
-      const role = await member.guild.roles.fetch(roleId);
-      const botMember = await member.guild.members.fetch(client.user.id);
-      if (role && role.position < botMember.roles.highest.position) {
-        await member.roles.add(role).catch(console.error);
-      }
-    }
+// ===== Guild member events for autoroles and join logging =====
+client.on('guildMemberAdd', member => {
+  const roleId = autoroles[member.guild.id];
+  if (roleId) {
+    const role = member.guild.roles.cache.get(roleId);
+    if (role) member.roles.add(role).catch(console.error);
+  }
 
-    // Join embed
-    const channelId = joinLogChannels[member.guild.id];
-    if (channelId) {
-      const channel = await member.guild.channels.fetch(channelId);
-      if (!channel) return;
+  const channelId = joinLogChannels[member.guild.id];
+  if (channelId) {
+    const channel = member.guild.channels.cache.get(channelId);
+    if (channel) {
       const embed = new EmbedBuilder()
-        .setTitle('Member Joined')
-        .setColor('Green')
-        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-        .addFields(
-          { name: 'User', value: `${member.user.tag} (${member.id})` },
-          { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>` }
-        )
+        .setTitle("Member Joined")
+        .setDescription(`${member.user.tag} has joined the server.`)
+        .setColor("Green")
         .setTimestamp();
-      channel.send({ embeds: [embed] }).catch(() => {});
+      channel.send({ embeds: [embed] });
     }
-  } catch (err) { console.error('guildMemberAdd error:', err); }
+  }
 });
 
-client.on('guildMemberRemove', async member => {
-  try {
-    const channelId = leaveLogChannels[member.guild.id];
-    if (!channelId) return;
-    const channel = await member.guild.channels.fetch(channelId);
-    if (channel) channel.send(`${member.user.tag} has left the server.`).catch(() => {});
-  } catch (err) { console.error('guildMemberRemove error:', err); }
+client.on('guildMemberRemove', member => {
+  const channelId = leaveLogChannels[member.guild.id];
+  if (channelId) {
+    const channel = member.guild.channels.cache.get(channelId);
+    if (channel) channel.send(`${member.user.tag} has left the server.`);
+  }
 });
 
-// ===== Boost logging =====
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
-  try {
-    const channelId = boostLogChannels[newMember.guild.id];
-    if (!channelId) return;
-    const channel = await newMember.guild.channels.fetch(channelId);
-    if (!channel) return;
-
-    if (!oldMember.premiumSince && newMember.premiumSince) {
-      channel.send(`🚀 ${newMember.user.tag} boosted the server!`).catch(() => {});
-    } else if (oldMember.premiumSince && !newMember.premiumSince) {
-      channel.send(`❌ ${newMember.user.tag} stopped boosting.`).catch(() => {});
-    }
-  } catch (err) { console.error('Boost logging error:', err); }
-});
-
-// ===== Message logging =====
-client.on('messageDelete', async message => handleMessageLog('deleted', message));
-client.on('messageUpdate', async (oldMsg, newMsg) => {
-  if (oldMsg.content !== newMsg.content) handleMessageLog('edited', oldMsg, newMsg);
-});
-
-async function handleMessageLog(type, oldMsg, newMsg = null) {
-  try {
-    const guild = oldMsg.guild;
-    if (!guild) return;
-    const channelId = logChannels[guild.id];
-    if (!channelId) return;
-    const channel = await guild.channels.fetch(channelId);
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-      .setColor(type === 'deleted' ? 'Red' : 'Orange')
-      .setAuthor({ name: oldMsg.author?.tag || 'Unknown', iconURL: oldMsg.author?.displayAvatarURL() })
-      .setTimestamp()
-      .setFooter({ text: type === 'deleted' ? 'Message Deleted' : 'Message Edited' });
-
-    if (type === 'deleted') {
-      embed.addFields(
-        { name: 'Content', value: oldMsg.content || 'No text' }
-      );
-      if (oldMsg.attachments.size > 0) embed.addFields({ name: 'Attachments', value: oldMsg.attachments.map(a => a.url).join('\n') });
-    } else if (type === 'edited') {
-      embed.addFields(
-        { name: 'Before', value: oldMsg.content || 'No text' },
-        { name: 'After', value: newMsg.content || 'No text' }
-      );
-      if (newMsg.attachments.size > 0) embed.addFields({ name: 'Attachments', value: newMsg.attachments.map(a => a.url).join('\n') });
-    }
-
-    channel.send({ embeds: [embed] }).catch(() => {});
-  } catch (err) { console.error('handleMessageLog error:', err); }
-}
-
-// ===== Slash command handler =====
+// ===== Slash commands handler =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   const { commandName, options, guild, user } = interaction;
@@ -174,80 +156,127 @@ client.on('interactionCreate', async interaction => {
   try {
     if (commandName === 'say') {
       const text = options.getString('text');
-      await interaction.reply({ content: text }).catch(() => {});
+      await interaction.reply(text);
     }
 
     if (commandName === 'invite') {
-      await interaction.reply({ content: 'Invite link here' }).catch(() => {});
+      await interaction.reply('Here is the invite link: <your invite link>');
     }
 
     if (commandName === 'dm') {
       const target = options.getUser('user');
       const message = options.getString('message');
-      try { await target.send(message); await interaction.reply({ content: `✅ DM sent to ${target.tag}`, ephemeral: true }); }
-      catch { await interaction.reply({ content: `❌ Failed to DM ${target.tag}`, ephemeral: true }); }
+      try {
+        await target.send(message);
+        await interaction.reply({ content: `Sent DM to ${target.tag}`, ephemeral: true });
+      } catch {
+        await interaction.reply({ content: `Failed to DM ${target.tag}`, ephemeral: true });
+      }
     }
 
     if (commandName === 'autorole') {
       const role = options.getRole('role');
-      if (!role) return interaction.reply({ content: 'You must select a role!', ephemeral: true });
-      const botMember = await guild.members.fetch(client.user.id);
-      if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) return interaction.reply({ content: 'I need Manage Roles permission!', ephemeral: true });
-      if (role.position >= botMember.roles.highest.position) return interaction.reply({ content: 'I cannot assign this role.', ephemeral: true });
-      autoroles[guild.id] = role.id;
-      saveJSON('autorole.json', autoroles);
-      await interaction.reply({ content: `Autorole set to ${role.name}`, ephemeral: true });
+      if (!role) {
+        const current = autoroles[guild.id];
+        await interaction.reply({ content: `Current autorole: ${current ? `<@&${current}>` : 'None'}`, ephemeral: true });
+      } else {
+        autoroles[guild.id] = role.id;
+        saveAutoroles();
+        await interaction.reply({ content: `Autorole set to ${role.name}`, ephemeral: true });
+      }
     }
 
-    if (['logboosts','logjoins','logleaves','active','logs'].includes(commandName)) {
-      const ch = options.getChannel('channel');
-      if (!ch) return interaction.reply({ content: 'You must select a channel!', ephemeral: true });
-      if (commandName === 'logboosts') { boostLogChannels[guild.id] = ch.id; saveJSON('boostlog.json', boostLogChannels); }
-      if (commandName === 'logjoins') { joinLogChannels[guild.id] = ch.id; saveJSON('joinlog.json', joinLogChannels); }
-      if (commandName === 'logleaves') { leaveLogChannels[guild.id] = ch.id; saveJSON('leavelog.json', leaveLogChannels); }
-      if (commandName === 'active') { activeChannels[guild.id] = ch.id; saveJSON('activechannels.json', activeChannels); }
-      if (commandName === 'logs') { logChannels[guild.id] = ch.id; saveJSON('logchannels.json', logChannels); }
-      await interaction.reply({ content: `Channel set for ${commandName}`, ephemeral: true });
+    if (commandName === 'logboosts') {
+      const channel = options.getChannel('channel');
+      if (!channel) return interaction.reply({ content: 'Please specify a channel.', ephemeral: true });
+      boostLogChannels[guild.id] = channel.id;
+      saveBoostLog();
+      await interaction.reply({ content: `Boost log channel set to ${channel.name}`, ephemeral: true });
+    }
+
+    if (commandName === 'logjoins') {
+      const channel = options.getChannel('channel');
+      if (!channel) return interaction.reply({ content: 'Please specify a channel.', ephemeral: true });
+      joinLogChannels[guild.id] = channel.id;
+      saveJoinLog();
+      await interaction.reply({ content: `Join log channel set to ${channel.name}`, ephemeral: true });
+    }
+
+    if (commandName === 'logleaves') {
+      const channel = options.getChannel('channel');
+      if (!channel) return interaction.reply({ content: 'Please specify a channel.', ephemeral: true });
+      leaveLogChannels[guild.id] = channel.id;
+      saveLeaveLog();
+      await interaction.reply({ content: `Leave log channel set to ${channel.name}`, ephemeral: true });
+    }
+
+    if (commandName === 'active') {
+      const channel = options.getChannel('channel');
+      if (!channel) return interaction.reply({ content: 'Please specify a channel.', ephemeral: true });
+      activeChannels[guild.id] = channel.id;
+      saveActiveChannels();
+      await interaction.reply({ content: `Active message channel set to ${channel.name}`, ephemeral: true });
+    }
+
+    if (commandName === 'logs') {
+      const channel = options.getChannel('channel');
+      if (!channel) return interaction.reply({ content: 'Please specify a channel.', ephemeral: true });
+      logChannels[guild.id] = channel.id;
+      saveLogChannels();
+      await interaction.reply({ content: `Deleted message logs channel set to ${channel.name}`, ephemeral: true });
     }
 
     if (commandName === 'unwhitelist') {
       const target = options.getUser('user');
       whitelist = whitelist.filter(id => id !== target.id);
-      saveJSON('whitelist.json', whitelist);
+      saveWhitelist();
       await interaction.reply({ content: `${target.tag} removed from whitelist.`, ephemeral: true });
     }
 
-  } catch (err) { console.error('Slash command error:', err); if (!interaction.replied) await interaction.reply({ content: 'Error running command.', ephemeral: true }); }
+  } catch (err) {
+    console.error(err);
+    await interaction.reply({ content: 'An error occurred while running the command.', ephemeral: true });
+  }
 });
 
-// ===== Prefix commands handler =====
+// ===== Message prefix commands =====
 client.on('messageCreate', async message => {
-  if (message.author.bot) return;
-  if (!message.content.startsWith(',')) return;
+  if (!message.content.startsWith(PREFIX) || message.author.bot) return;
 
-  const args = message.content.slice(1).trim().split(/ +/g);
-  const cmd = args.shift().toLowerCase();
+  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+  const command = args.shift().toLowerCase();
 
-  if (cmd === 'whitelist') {
-    if (message.author.id !== OWNER_ID) return message.reply('You cannot use this command.');
-    const userId = args[0];
-    if (!userId) return message.reply('Please provide a user ID.');
-    if (!/^\d+$/.test(userId)) return message.reply('Invalid user ID.');
-    if (whitelist.includes(userId)) return message.reply('User is already whitelisted.');
-    whitelist.push(userId);
-    saveJSON('whitelist.json', whitelist);
-    message.reply(`User ${userId} has been whitelisted.`);
+  // ===== ,role command =====
+  if (command === "role") {
+    // Check admin
+    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return message.reply("You need admin permissions to use this command.");
+    }
+
+    const userMention = args.shift();
+    const roleName = args.join(" ");
+
+    if (!userMention || !roleName) {
+      return message.reply("Usage: ,role @user RoleName");
+    }
+
+    const member = message.mentions.members.first();
+    if (!member) return message.reply("Couldn't find that user in the server.");
+
+    const role = message.guild.roles.cache.find(r => r.name === roleName);
+    if (!role) return message.reply(`Role "${roleName}" not found.`);
+
+    member.roles.add(role).then(() => {
+      message.reply(`✅ Added role "${role.name}" to ${member.user.tag}`);
+    }).catch(err => {
+      console.error(err);
+      message.reply("Failed to add role. Make sure the bot has permission and the role is below its highest role.");
+    });
   }
 
-  if (cmd === 'unwhitelist') {
-    if (message.author.id !== OWNER_ID) return message.reply('You cannot use this command.');
-    const userId = args[0];
-    if (!userId) return message.reply('Please provide a user ID.');
-    whitelist = whitelist.filter(id => id !== userId);
-    saveJSON('whitelist.json', whitelist);
-    message.reply(`User ${userId} has been removed from the whitelist.`);
-  }
+  // ===== You can keep all other ,commands here as before =====
 });
 
-// ===== Login =====
+
+// ===== LOGIN =====
 client.login(process.env.TOKEN);
