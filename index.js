@@ -11,7 +11,7 @@ app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 // ===== Constants =====
 const OWNER_ID = "1375128465430417610";
 
-// ===== Helper to load/save JSON safely =====
+// ===== JSON helpers =====
 const loadJSON = (file, defaultValue = {}) => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : defaultValue;
 const saveJSON = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
 
@@ -34,48 +34,23 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel]
 });
 
-// ===== Ready event and slash commands registration =====
+// ===== Ready event =====
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  // ===== Startup verification =====
-  console.log('Verifying saved channels and autoroles...');
+  // ===== Startup verification of saved channels =====
   for (const [guildId, channelId] of Object.entries(logChannels)) {
-    client.guilds.fetch(guildId).then(guild => {
-      guild.channels.fetch(channelId).then(() => console.log(`Deleted messages log ready: ${channelId} in guild ${guildId}`)).catch(() => {});
-    }).catch(() => {});
+    client.guilds.fetch(guildId).then(guild => guild.channels.fetch(channelId).catch(() => {})).catch(() => {});
   }
   for (const [guildId, channelId] of Object.entries(joinLogChannels)) {
-    client.guilds.fetch(guildId).then(guild => {
-      guild.channels.fetch(channelId).then(() => console.log(`Join log ready: ${channelId} in guild ${guildId}`)).catch(() => {});
-    }).catch(() => {});
+    client.guilds.fetch(guildId).then(guild => guild.channels.fetch(channelId).catch(() => {})).catch(() => {});
   }
   for (const [guildId, channelId] of Object.entries(leaveLogChannels)) {
-    client.guilds.fetch(guildId).then(guild => {
-      guild.channels.fetch(channelId).then(() => console.log(`Leave log ready: ${channelId} in guild ${guildId}`)).catch(() => {});
-    }).catch(() => {});
+    client.guilds.fetch(guildId).then(guild => guild.channels.fetch(channelId).catch(() => {})).catch(() => {});
   }
   for (const [guildId, channelId] of Object.entries(boostLogChannels)) {
-    client.guilds.fetch(guildId).then(guild => {
-      guild.channels.fetch(channelId).then(() => console.log(`Boost log ready: ${channelId} in guild ${guildId}`)).catch(() => {});
-    }).catch(() => {});
+    client.guilds.fetch(guildId).then(guild => guild.channels.fetch(channelId).catch(() => {})).catch(() => {});
   }
-
-  // ===== Register slash commands globally =====
-  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-  await rest.put(Routes.applicationCommands(client.user.id), {
-    body: [
-      { name: 'say', description: 'Make the bot say something', options: [{ name: 'text', type: 3, description: 'Text to say', required: true }] },
-      { name: 'invite', description: 'Get bot invite link' },
-      { name: 'dm', description: 'DM a user', options: [{ name: 'user', type: 6, description: 'User to DM', required: true }, { name: 'message', type: 3, description: 'Message content', required: true }] },
-      { name: 'autorole', description: 'Set autorole', options: [{ name: 'role', type: 8, description: 'Role to assign', required: true }] },
-      { name: 'logboosts', description: 'Set boost log channel', options: [{ name: 'channel', type: 7, description: 'Channel for boost logs', required: true }] },
-      { name: 'logjoins', description: 'Set join log channel', options: [{ name: 'channel', type: 7, description: 'Channel for join logs', required: true }] },
-      { name: 'logleaves', description: 'Set leave log channel', options: [{ name: 'channel', type: 7, description: 'Channel for leave logs', required: true }] },
-      { name: 'active', description: 'Set active message channel', options: [{ name: 'channel', type: 7, description: 'Channel for active messages', required: true }] },
-      { name: 'logs', description: 'Set deleted/edited messages log channel', options: [{ name: 'channel', type: 7, description: 'Channel for logs', required: true }] }
-    ]
-  });
 
   // ===== 12-hour active message loop =====
   setInterval(() => {
@@ -89,8 +64,8 @@ client.once('ready', async () => {
   }, 12 * 60 * 60 * 1000);
 });
 
-// ===== Member join/leave with autorole and join embed logs =====
-client.on('guildMemberAdd', async (member) => {
+// ===== Guild member events =====
+client.on('guildMemberAdd', async member => {
   try {
     // Autorole
     const roleId = autoroles[member.guild.id];
@@ -98,7 +73,7 @@ client.on('guildMemberAdd', async (member) => {
       const role = await member.guild.roles.fetch(roleId);
       const botMember = await member.guild.members.fetch(client.user.id);
       if (role && role.position < botMember.roles.highest.position) {
-        await member.roles.add(role);
+        await member.roles.add(role).catch(console.error);
       }
     }
 
@@ -116,17 +91,17 @@ client.on('guildMemberAdd', async (member) => {
           { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>` }
         )
         .setTimestamp();
-      channel.send({ embeds: [embed] });
+      channel.send({ embeds: [embed] }).catch(() => {});
     }
   } catch (err) { console.error('guildMemberAdd error:', err); }
 });
 
-client.on('guildMemberRemove', async (member) => {
+client.on('guildMemberRemove', async member => {
   try {
     const channelId = leaveLogChannels[member.guild.id];
     if (!channelId) return;
     const channel = await member.guild.channels.fetch(channelId);
-    if (channel) channel.send(`${member.user.tag} has left the server!`);
+    if (channel) channel.send(`${member.user.tag} has left the server.`).catch(() => {});
   } catch (err) { console.error('guildMemberRemove error:', err); }
 });
 
@@ -139,126 +114,96 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!channel) return;
 
     if (!oldMember.premiumSince && newMember.premiumSince) {
-      channel.send(`🚀 ${newMember.user.tag} boosted the server!`);
+      channel.send(`🚀 ${newMember.user.tag} boosted the server!`).catch(() => {});
     } else if (oldMember.premiumSince && !newMember.premiumSince) {
-      channel.send(`❌ ${newMember.user.tag} stopped boosting.`);
+      channel.send(`❌ ${newMember.user.tag} stopped boosting.`).catch(() => {});
     }
   } catch (err) { console.error('Boost logging error:', err); }
 });
 
-// ===== Deleted and Edited message logging (includes images) =====
-client.on('messageDelete', async message => {
-  try {
-    if (!message.guild) return;
-    const channelId = logChannels[message.guild.id];
-    if (!channelId) return;
-
-    const channel = await message.guild.channels.fetch(channelId);
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle('Deleted Message')
-      .setColor('Red')
-      .addFields(
-        { name: 'User', value: message.author?.tag || 'Unknown' },
-        { name: 'Content', value: message.content || 'No text' }
-      )
-      .setTimestamp();
-
-    // Include attachments if any
-    if (message.attachments.size > 0) {
-      embed.addFields({ name: 'Attachments', value: message.attachments.map(a => a.url).join('\n') });
-    }
-
-    channel.send({ embeds: [embed] });
-  } catch (err) { console.error('messageDelete error:', err); }
+// ===== Message logging (deleted + edited combined) =====
+client.on('messageDelete', async message => handleMessageLog('deleted', message));
+client.on('messageUpdate', async (oldMsg, newMsg) => {
+  if (oldMsg.content !== newMsg.content) handleMessageLog('edited', oldMsg, newMsg);
 });
 
-client.on('messageUpdate', async (oldMsg, newMsg) => {
+async function handleMessageLog(type, oldMsg, newMsg = null) {
   try {
-    if (!oldMsg.guild || oldMsg.content === newMsg.content) return;
-    const channelId = logChannels[oldMsg.guild.id];
+    const guild = oldMsg.guild;
+    if (!guild) return;
+    const channelId = logChannels[guild.id];
     if (!channelId) return;
-
-    const channel = await oldMsg.guild.channels.fetch(channelId);
+    const channel = await guild.channels.fetch(channelId);
     if (!channel) return;
 
     const embed = new EmbedBuilder()
-      .setTitle('Edited Message')
-      .setColor('Orange')
-      .addFields(
-        { name: 'User', value: oldMsg.author?.tag || 'Unknown' },
+      .setColor(type === 'deleted' ? 'Red' : 'Orange')
+      .setAuthor({ name: oldMsg.author?.tag || 'Unknown', iconURL: oldMsg.author?.displayAvatarURL() })
+      .setTimestamp()
+      .setFooter({ text: type === 'deleted' ? 'Message Deleted' : 'Message Edited' });
+
+    if (type === 'deleted') {
+      embed.addFields(
+        { name: 'Content', value: oldMsg.content || 'No text' }
+      );
+      if (oldMsg.attachments.size > 0) embed.addFields({ name: 'Attachments', value: oldMsg.attachments.map(a => a.url).join('\n') });
+    } else if (type === 'edited') {
+      embed.addFields(
         { name: 'Before', value: oldMsg.content || 'No text' },
         { name: 'After', value: newMsg.content || 'No text' }
-      )
-      .setTimestamp();
+      );
+      if (newMsg.attachments.size > 0) embed.addFields({ name: 'Attachments', value: newMsg.attachments.map(a => a.url).join('\n') });
+    }
 
-    channel.send({ embeds: [embed] });
-  } catch (err) { console.error('messageUpdate error:', err); }
-});
+    channel.send({ embeds: [embed] }).catch(() => {});
+  } catch (err) { console.error('handleMessageLog error:', err); }
+}
 
 // ===== Slash command handler =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
-
   const { commandName, options, guild } = interaction;
 
   try {
     if (commandName === 'say') {
       const text = options.getString('text');
-      return interaction.reply({ content: text });
+      await interaction.reply({ content: text }).catch(() => {});
     }
 
     if (commandName === 'invite') {
-      return interaction.reply({ content: 'Invite link here' });
+      await interaction.reply({ content: 'Invite link here' }).catch(() => {});
     }
 
     if (commandName === 'dm') {
       const target = options.getUser('user');
       const message = options.getString('message');
-      try {
-        await target.send(message);
-        return interaction.reply({ content: `✅ DM sent to ${target.tag}`, ephemeral: true });
-      } catch {
-        return interaction.reply({ content: `❌ Failed to DM ${target.tag}. They may have DMs off.`, ephemeral: true });
-      }
+      try { await target.send(message); await interaction.reply({ content: `✅ DM sent to ${target.tag}`, ephemeral: true }); }
+      catch { await interaction.reply({ content: `❌ Failed to DM ${target.tag}`, ephemeral: true }); }
     }
 
     if (commandName === 'autorole') {
       const role = options.getRole('role');
       if (!role) return interaction.reply({ content: 'You must select a role!', ephemeral: true });
-
       const botMember = await guild.members.fetch(client.user.id);
-      if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-        return interaction.reply({ content: 'I need Manage Roles permission!', ephemeral: true });
-      }
-      if (role.position >= botMember.roles.highest.position) {
-        return interaction.reply({ content: 'I cannot assign a role higher than my highest role.', ephemeral: true });
-      }
-
+      if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) return interaction.reply({ content: 'I need Manage Roles permission!', ephemeral: true });
+      if (role.position >= botMember.roles.highest.position) return interaction.reply({ content: 'I cannot assign this role.', ephemeral: true });
       autoroles[guild.id] = role.id;
       saveJSON('autorole.json', autoroles);
-      return interaction.reply({ content: `Autorole successfully set to ${role.name}`, ephemeral: true });
+      await interaction.reply({ content: `Autorole set to ${role.name}`, ephemeral: true });
     }
 
-    // ===== Log channel commands =====
     if (['logboosts','logjoins','logleaves','active','logs'].includes(commandName)) {
       const ch = options.getChannel('channel');
       if (!ch) return interaction.reply({ content: 'You must select a channel!', ephemeral: true });
-
       if (commandName === 'logboosts') { boostLogChannels[guild.id] = ch.id; saveJSON('boostlog.json', boostLogChannels); }
       if (commandName === 'logjoins') { joinLogChannels[guild.id] = ch.id; saveJSON('joinlog.json', joinLogChannels); }
       if (commandName === 'logleaves') { leaveLogChannels[guild.id] = ch.id; saveJSON('leavelog.json', leaveLogChannels); }
       if (commandName === 'active') { activeChannels[guild.id] = ch.id; saveJSON('activechannels.json', activeChannels); }
       if (commandName === 'logs') { logChannels[guild.id] = ch.id; saveJSON('logchannels.json', logChannels); }
-
-      return interaction.reply({ content: `Channel set for ${commandName}`, ephemeral: true });
+      await interaction.reply({ content: `Channel set for ${commandName}`, ephemeral: true });
     }
 
-  } catch (err) {
-    console.error('Slash command error:', err);
-    if (!interaction.replied) interaction.reply({ content: 'An error occurred.', ephemeral: true });
-  }
+  } catch (err) { console.error('Slash command error:', err); if (!interaction.replied) await interaction.reply({ content: 'Error running command.', ephemeral: true }); }
 });
 
 // ===== Login =====
