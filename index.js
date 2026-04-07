@@ -179,3 +179,34 @@ client.once('clientReady', async () => { // ✅ FIXED
 
 // ===== LOGIN =====
 client.login(process.env.TOKEN);
+// ===== LOGIN =====
+client.login(process.env.TOKEN);
+
+// ===== SLASH COMMAND HANDLER =====
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const { commandName, options } = interaction;
+
+  if (commandName === 'say') {
+    const text = options.getString('text');
+    await interaction.reply(text);
+  }
+
+  if (commandName === 'invite') {
+    await interaction.reply('Here is the invite link: <your invite link>');
+  }
+
+  if (commandName === 'dm') {
+    const user = options.getUser('user');
+    const message = options.getString('message');
+    try {
+      await user.send(message);
+      await interaction.reply({ content: `Sent DM to ${user.tag}`, ephemeral: true });
+    } catch {
+      await interaction.reply({ content: `Failed to DM ${user.tag}`, ephemeral: true });
+    }
+  }
+
+  // Add more commands here if needed
+});
