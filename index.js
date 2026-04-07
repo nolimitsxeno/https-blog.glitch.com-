@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, Partials, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const https = require('https');
-const express = require('express'); // ✅ Express for Render
+const express = require('express'); // Express for Render
 
 // ===== Express server (Render requirement) =====
 const app = express();
@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 5000;
 app.get('/', (req, res) => res.send('Bot is alive!'));
 app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 
-// ===== Original helpers and constants =====
+// ===== Helpers =====
 async function isRealWord(word) {
   return new Promise((resolve) => {
     const req = https.get(
@@ -82,8 +82,8 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel]
 });
 
-// ===== clientReady and slash commands registration =====
-client.once('clientReady', async () => {
+// ===== Ready event and slash commands =====
+client.once('ready', async () => {
   console.log(`Bot is online as ${client.user.tag}`);
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -116,32 +116,75 @@ client.once('clientReady', async () => {
       } catch {}
     }
   }, 12 * 60 * 60 * 1000);
+
+  // ===== Optional test snippet for logging channels =====
+  setTimeout(() => {
+    for (const guild of client.guilds.cache.values()) {
+      const joinCh = joinLogChannels[guild.id] ? guild.channels.cache.get(joinLogChannels[guild.id]) : null;
+      const leaveCh = leaveLogChannels[guild.id] ? guild.channels.cache.get(leaveLogChannels[guild.id]) : null;
+      const boostCh = boostLogChannels[guild.id] ? guild.channels.cache.get(boostLogChannels[guild.id]) : null;
+      const logCh = logChannels[guild.id] ? guild.channels.cache.get(logChannels[guild.id]) : null;
+
+      if (joinCh) joinCh.send('✅ Join log channel test').catch(() => {});
+      if (leaveCh) leaveCh.send('✅ Leave log channel test').catch(() => {});
+      if (boostCh) boostCh.send('✅ Boost log channel test').catch(() => {});
+      if (logCh) logCh.send('✅ Deleted messages log test').catch(() => {});
+
+      const roleId = autoroles[guild.id];
+      if (roleId) {
+        const role = guild.roles.cache.get(roleId);
+        if (role) console.log(`✅ Autorole for ${guild.name}: ${role.name}`);
+      }
+    }
+  }, 5000);
 });
 
-// ===== Guild member events for autoroles and join logging =====
+// ===== Guild member events =====
 client.on('guildMemberAdd', member => {
+  // Autorole
   const roleId = autoroles[member.guild.id];
   if (roleId) {
     const role = member.guild.roles.cache.get(roleId);
     if (role) member.roles.add(role).catch(console.error);
   }
-
-  const channelId = joinLogChannels[member.guild.id];
-  if (channelId) {
-    const channel = member.guild.channels.cache.get(channelId);
-    if (channel) channel.send(`${member.user.tag} has joined the server.`);
+  // Join log
+  const joinChId = joinLogChannels[member.guild.id];
+  if (joinChId) {
+    const channel = member.guild.channels.cache.get(joinChId);
+    if (channel) channel.send(`${member.user.tag} has joined the server.`).catch(() => {});
   }
 });
 
 client.on('guildMemberRemove', member => {
-  const channelId = leaveLogChannels[member.guild.id];
-  if (channelId) {
-    const channel = member.guild.channels.cache.get(channelId);
-    if (channel) channel.send(`${member.user.tag} has left the server.`);
+  const leaveChId = leaveLogChannels[member.guild.id];
+  if (leaveChId) {
+    const channel = member.guild.channels.cache.get(leaveChId);
+    if (channel) channel.send(`${member.user.tag} has left the server.`).catch(() => {});
   }
 });
 
-// ===== Slash commands handler =====
+// ===== Message delete logging =====
+client.on('messageDelete', message => {
+  if (!message.guild) return;
+  const logChId = logChannels[message.guild.id];
+  if (!logChId) return;
+  const logChannel = message.guild.channels.cache.get(logChId);
+  if (!logChannel) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle('Message Deleted')
+    .setColor('Red')
+    .addFields(
+      { name: 'Author', value: message.author ? message.author.tag : 'Unknown', inline: true },
+      { name: 'Channel', value: message.channel ? `<#${message.channel.id}>` : 'Unknown', inline: true },
+      { name: 'Content', value: message.content || '[No Text Content]' }
+    )
+    .setTimestamp();
+
+  logChannel.send({ embeds: [embed] }).catch(console.error);
+});
+
+// ===== Slash commands =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   const { commandName, options, guild, user } = interaction;
