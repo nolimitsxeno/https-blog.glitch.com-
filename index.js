@@ -66,7 +66,7 @@ client.once('ready', async () => {
   }, 12 * 60 * 60 * 1000);
 });
 
-// ===== Member join/leave with autorole and logs =====
+// ===== Member join/leave with autorole and join embed logs =====
 client.on('guildMemberAdd', async (member) => {
   try {
     // Autorole
@@ -74,20 +74,28 @@ client.on('guildMemberAdd', async (member) => {
     if (roleId) {
       const role = await member.guild.roles.fetch(roleId);
       const botMember = await member.guild.members.fetch(client.user.id);
-
       if (role && role.position < botMember.roles.highest.position) {
         await member.roles.add(role);
-      } else {
-        console.log(`Autorole skipped for ${member.user.tag} (role missing or too high)`);
       }
     }
 
-    // Join log
+    // Join log embed
     const channelId = joinLogChannels[member.guild.id];
     if (channelId) {
       const channel = await member.guild.channels.fetch(channelId);
-      if (channel) channel.send(`${member.user.tag} has joined the server!`);
-      else console.log(`Join log channel not found for ${member.guild.name}`);
+      if (!channel) return;
+
+      const embed = new EmbedBuilder()
+        .setTitle('Member Joined')
+        .setColor('Green')
+        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+        .addFields(
+          { name: 'User', value: `${member.user.tag} (${member.id})` },
+          { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>` }
+        )
+        .setTimestamp();
+
+      channel.send({ embeds: [embed] });
     }
   } catch (err) {
     console.error('Error in guildMemberAdd:', err);
@@ -164,13 +172,13 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'dm') {
-      const user = options.getUser('user');
-      const msg = options.getString('message');
+      const target = options.getUser('user');
+      const message = options.getString('message');
       try {
-        await user.send(msg);
-        return interaction.reply({ content: 'DM sent', ephemeral: true });
+        await target.send(message);
+        return interaction.reply({ content: `✅ DM sent to ${target.tag}`, ephemeral: true });
       } catch {
-        return interaction.reply({ content: 'Failed to DM user', ephemeral: true });
+        return interaction.reply({ content: `❌ Failed to DM ${target.tag}. They may have DMs off.`, ephemeral: true });
       }
     }
 
