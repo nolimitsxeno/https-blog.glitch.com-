@@ -904,9 +904,9 @@ client.on('messageCreate', async (message) => {
       const prompt = `<@${currentPlayer.id}>, say a word containing **"${required.toUpperCase()}"**! ❤️ ${lives.get(currentPlayer.id)}/2 lives — 10 seconds!`;
       const promptMsg = await message.channel.send(prompt);
 
-      const t1 = setTimeout(() => promptMsg.react('3️⃣').catch(() => {}), 7000);
-      const t2 = setTimeout(() => promptMsg.react('2️⃣').catch(() => {}), 8000);
-      const t3 = setTimeout(() => promptMsg.react('1️⃣').catch(() => {}), 9000);
+      const t1 = setTimeout(() => promptMsg.react('3️⃣').catch(() => {}), 4000);
+      const t2 = setTimeout(() => promptMsg.react('2️⃣').catch(() => {}), 6000);
+      const t3 = setTimeout(() => promptMsg.react('1️⃣').catch(() => {}), 8000);
 
       const filter = m => m.author.id === currentPlayer.id && /^[a-zA-Z]+$/.test(m.content.trim());
       let collected;
