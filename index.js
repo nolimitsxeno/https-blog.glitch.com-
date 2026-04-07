@@ -16,6 +16,7 @@ const loadJSON = (file, defaultValue = {}) => fs.existsSync(file) ? JSON.parse(f
 const saveJSON = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
 
 // ===== Load data =====
+let whitelist = loadJSON('whitelist.json', [OWNER_ID]);
 let activeChannels = loadJSON('activechannels.json');
 let logChannels = loadJSON('logchannels.json');
 let joinLogChannels = loadJSON('joinlog.json');
@@ -38,21 +39,27 @@ const client = new Client({
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  // ===== Startup verification of saved channels =====
-  for (const [guildId, channelId] of Object.entries(logChannels)) {
-    client.guilds.fetch(guildId).then(guild => guild.channels.fetch(channelId).catch(() => {})).catch(() => {});
-  }
-  for (const [guildId, channelId] of Object.entries(joinLogChannels)) {
-    client.guilds.fetch(guildId).then(guild => guild.channels.fetch(channelId).catch(() => {})).catch(() => {});
-  }
-  for (const [guildId, channelId] of Object.entries(leaveLogChannels)) {
-    client.guilds.fetch(guildId).then(guild => guild.channels.fetch(channelId).catch(() => {})).catch(() => {});
-  }
-  for (const [guildId, channelId] of Object.entries(boostLogChannels)) {
-    client.guilds.fetch(guildId).then(guild => guild.channels.fetch(channelId).catch(() => {})).catch(() => {});
-  }
+  // Register slash commands
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+  try {
+    await rest.put(Routes.applicationCommands(client.user.id), {
+      body: [
+        { name: 'say', description: 'Make the bot send a message', options: [{ name: 'text', type: 3, description: 'Text to send', required: true }] },
+        { name: 'invite', description: 'Get the bot invite link' },
+        { name: 'dm', description: 'DM a user', options: [{ name: 'user', type: 6, required: true }, { name: 'message', type: 3, required: true }] },
+        { name: 'autorole', description: 'Set autorole', options: [{ name: 'role', type: 8, required: false }] },
+        { name: 'logboosts', description: 'Set boost log channel', options: [{ name: 'channel', type: 7, required: false }] },
+        { name: 'logjoins', description: 'Set join log channel', options: [{ name: 'channel', type: 7, required: false }] },
+        { name: 'logleaves', description: 'Set leave log channel', options: [{ name: 'channel', type: 7, required: false }] },
+        { name: 'active', description: 'Auto message channel', options: [{ name: 'channel', type: 7, required: false }] },
+        { name: 'logs', description: 'Deleted/edited message logs', options: [{ name: 'channel', type: 7, required: false }] },
+        { name: 'unwhitelist', description: 'Remove from whitelist', options: [{ name: 'user', type: 6, required: true }] }
+      ]
+    });
+    console.log('Slash commands registered');
+  } catch (err) { console.error(err); }
 
-  // ===== 12-hour active message loop =====
+  // 12-hour active message loop
   setInterval(() => {
     for (const [guildId, channelId] of Object.entries(activeChannels)) {
       client.guilds.fetch(guildId).then(guild => {
@@ -121,7 +128,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   } catch (err) { console.error('Boost logging error:', err); }
 });
 
-// ===== Message logging (deleted + edited combined) =====
+// ===== Message logging =====
 client.on('messageDelete', async message => handleMessageLog('deleted', message));
 client.on('messageUpdate', async (oldMsg, newMsg) => {
   if (oldMsg.content !== newMsg.content) handleMessageLog('edited', oldMsg, newMsg);
@@ -162,7 +169,7 @@ async function handleMessageLog(type, oldMsg, newMsg = null) {
 // ===== Slash command handler =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
-  const { commandName, options, guild } = interaction;
+  const { commandName, options, guild, user } = interaction;
 
   try {
     if (commandName === 'say') {
@@ -203,7 +210,43 @@ client.on('interactionCreate', async interaction => {
       await interaction.reply({ content: `Channel set for ${commandName}`, ephemeral: true });
     }
 
+    if (commandName === 'unwhitelist') {
+      const target = options.getUser('user');
+      whitelist = whitelist.filter(id => id !== target.id);
+      saveJSON('whitelist.json', whitelist);
+      await interaction.reply({ content: `${target.tag} removed from whitelist.`, ephemeral: true });
+    }
+
   } catch (err) { console.error('Slash command error:', err); if (!interaction.replied) await interaction.reply({ content: 'Error running command.', ephemeral: true }); }
+});
+
+// ===== Prefix commands handler =====
+client.on('messageCreate', async message => {
+  if (message.author.bot) return;
+  if (!message.content.startsWith(',')) return;
+
+  const args = message.content.slice(1).trim().split(/ +/g);
+  const cmd = args.shift().toLowerCase();
+
+  if (cmd === 'whitelist') {
+    if (message.author.id !== OWNER_ID) return message.reply('You cannot use this command.');
+    const userId = args[0];
+    if (!userId) return message.reply('Please provide a user ID.');
+    if (!/^\d+$/.test(userId)) return message.reply('Invalid user ID.');
+    if (whitelist.includes(userId)) return message.reply('User is already whitelisted.');
+    whitelist.push(userId);
+    saveJSON('whitelist.json', whitelist);
+    message.reply(`User ${userId} has been whitelisted.`);
+  }
+
+  if (cmd === 'unwhitelist') {
+    if (message.author.id !== OWNER_ID) return message.reply('You cannot use this command.');
+    const userId = args[0];
+    if (!userId) return message.reply('Please provide a user ID.');
+    whitelist = whitelist.filter(id => id !== userId);
+    saveJSON('whitelist.json', whitelist);
+    message.reply(`User ${userId} has been removed from the whitelist.`);
+  }
 });
 
 // ===== Login =====
