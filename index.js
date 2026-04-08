@@ -38,7 +38,8 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildModeration
+        GatewayIntentBits.GuildModeration,
+        GatewayIntentBits.GuildMessageReactions
     ],
     partials: [Partials.Message, Partials.Channel]
 });
@@ -47,6 +48,7 @@ const client = new Client({
 client.once('ready', () => {
     console.log(`Bot online as ${client.user.tag}`);
 
+    // Active messages every 2 hours
     setInterval(() => {
         try {
             for (const [guildId, channelId] of Object.entries(activeChannels)) {
@@ -110,7 +112,55 @@ client.on('guildMemberRemove', member => {
     }
 });
 
-// ===== Prefix =====
+// ===== Message Delete (text + attachments) =====
+client.on('messageDelete', async message => {
+    try {
+        if (message.partial) {
+            try { await message.fetch(); } catch { return; }
+        }
+        if (!message.guild) return;
+
+        const channelId = logChannels[message.guild.id];
+        if (!channelId) return;
+        const logChannel = message.guild.channels.cache.get(channelId);
+        if (!logChannel) return;
+
+        const authorTag = message.author?.tag || 'Unknown';
+        const content = message.content || '[No text content]';
+        const attachments = message.attachments.size
+            ? `\nAttachments: ${message.attachments.map(a => a.url).join(', ')}`
+            : '';
+        logChannel.send(`🗑️ Deleted message from ${authorTag}: ${content}${attachments}`);
+    } catch (err) {
+        console.error('Delete log error:', err);
+    }
+});
+
+// ===== Message Update (edits with attachments) =====
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+    try {
+        if (oldMessage.partial) {
+            try { await oldMessage.fetch(); } catch { return; }
+        }
+        if (!oldMessage.guild) return;
+        if (oldMessage.content === newMessage.content && newMessage.attachments.size === 0) return;
+
+        const channelId = logChannels[oldMessage.guild.id];
+        if (!channelId) return;
+        const logChannel = oldMessage.guild.channels.cache.get(channelId);
+        if (!logChannel) return;
+
+        const attachments = newMessage.attachments.size
+            ? `\nAttachments: ${newMessage.attachments.map(a => a.url).join(', ')}`
+            : '';
+
+        logChannel.send(`✏️ Edited message by ${oldMessage.author?.tag || 'Unknown'}:\n**Before:** ${oldMessage.content || '[No text]'}\n**After:** ${newMessage.content || '[No text]'}${attachments}`);
+    } catch (err) {
+        console.error('Edit log error:', err);
+    }
+});
+
+// ===== Prefix commands =====
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
@@ -141,7 +191,7 @@ client.on('messageCreate', async message => {
     }
 });
 
-// ===== SLASH COMMANDS (FIXED) =====
+// ===== Slash commands (deferReply fix) =====
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
