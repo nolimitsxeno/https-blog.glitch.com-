@@ -98,7 +98,7 @@ client.on('guildMemberAdd', member => {
 
     const embed = new EmbedBuilder()
         .setTitle('Member Joined')
-        .setDescription(`${member} has joined the server!`) // ping user
+        .setDescription(`${member} has joined the server!`)
         .addFields({ name: 'Account Created', value: `${member.user.createdAt.toUTCString()}` })
         .setColor('Green')
         .setTimestamp();
@@ -106,13 +106,14 @@ client.on('guildMemberAdd', member => {
 });
 
 client.on('guildMemberRemove', member => {
-    const channelId = leaveLogChannels[member.guild.id];
+    const channelId = leaveLogChannels[member.guild.id] || joinLogChannels[member.guild.id];
     if (!channelId) return;
     const channel = member.guild.channels.cache.get(channelId);
     if (!channel) return;
+
     const embed = new EmbedBuilder()
         .setTitle('Member Left')
-        .setDescription(`${member.user.tag} left the server.`)
+        .setDescription(`${member} has left the server.`)
         .setColor('Red')
         .setTimestamp();
     channel.send({ embeds: [embed] });
@@ -166,6 +167,12 @@ client.on('interactionCreate', async interaction => {
             joinLogChannels[interaction.guild.id] = interaction.channel.id;
             saveJoinLog();
             await interaction.reply({ content: `Join logs enabled in ${interaction.channel}`, ephemeral: true });
+        }
+
+        if (commandName === 'logleaves') {
+            leaveLogChannels[interaction.guild.id] = interaction.channel.id;
+            saveLeaveLog();
+            await interaction.reply({ content: `Leave logs enabled in ${interaction.channel}`, ephemeral: true });
         }
 
     } catch (err) {
