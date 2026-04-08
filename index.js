@@ -1,6 +1,5 @@
-const { Client, GatewayIntentBits, PermissionsBitField, Partials, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
-const https = require('https');
 const express = require('express');
 
 const app = express();
@@ -47,11 +46,11 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel]
 });
 
-// ===== client ready =====
+// ===== Ready =====
 client.once('ready', () => {
     console.log(`Bot online as ${client.user.tag}`);
 
-    // ===== /active messages every 2 hours =====
+    // /active messages every 2 hours
     setInterval(() => {
         for (const [guildId, channelId] of Object.entries(activeChannels)) {
             const guild = client.guilds.cache.get(guildId);
@@ -99,7 +98,7 @@ client.on('guildMemberAdd', member => {
 
     const embed = new EmbedBuilder()
         .setTitle('Member Joined')
-        .setDescription(`${member} has joined the server!`) // mentions user
+        .setDescription(`${member} has joined the server!`) // pings user
         .addFields({ name: 'Account Created', value: `${member.user.createdAt.toUTCString()}` })
         .setColor('Green')
         .setTimestamp();
@@ -119,15 +118,6 @@ client.on('guildMemberRemove', member => {
     channel.send({ embeds: [embed] });
 });
 
-// ===== Boost logs =====
-client.on('guildBoostLevelUp', guild => {
-    const channelId = boostLogChannels[guild.id];
-    if (!channelId) return;
-    const channel = guild.channels.cache.get(channelId);
-    if (!channel) return;
-    channel.send(`✨ Server boost level increased!`);
-});
-
 // ===== Prefix commands =====
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
@@ -141,15 +131,12 @@ client.on('messageCreate', async message => {
         try {
             if (message.mentions.users.size) userId = message.mentions.users.first().id;
             else userId = args[0].replace(/[<@!>]/g, '');
-            // try fetch to validate
             await client.users.fetch(userId);
         } catch { return; } // invalid user, do nothing
-        // add to hardbans
         if (!hardbannedUsers.has(userId)) {
             hardbannedUsers.set(userId, true);
             saveHardbans();
         }
-        // ban if member exists
         const member = message.guild.members.cache.get(userId);
         if (member) member.ban({ reason: 'Hardbanned by bot' }).catch(() => { });
         await message.reply('👍'); // only thumbs up
