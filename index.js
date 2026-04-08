@@ -143,5 +143,21 @@ client.on('messageCreate', async message => {
     }
 });
 
+// ===== Slash commands =====
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const { commandName } = interaction;
+
+    if (commandName === 'logs') {
+        // Save the channel for logging
+        logChannels[interaction.guild.id] = interaction.channel.id;
+        saveLogChannels();
+        await interaction.reply({ content: `Logging enabled in ${interaction.channel}`, ephemeral: true });
+    }
+
+    // /logboosts untouched as requested, handled elsewhere
+});
+
 // ===== Login =====
 client.login(process.env.TOKEN);
