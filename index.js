@@ -175,6 +175,22 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: `Leave logs enabled in ${interaction.channel}`, ephemeral: true });
         }
 
+        // ===== FIXED /autorole =====
+        if (commandName === 'autorole') {
+            const role = interaction.options.getRole('role');
+            if (!role) return interaction.reply({ content: '❌ You must select a role.', ephemeral: true });
+            autoroles[interaction.guild.id] = role.id;
+            saveAutoroles();
+            await interaction.reply({ content: `✅ Autorole set to ${role}`, ephemeral: true });
+        }
+
+        // ===== FIXED /active =====
+        if (commandName === 'active') {
+            activeChannels[interaction.guild.id] = interaction.channel.id;
+            saveActiveChannels();
+            await interaction.reply({ content: `✅ Active messages will be sent in this channel every 2 hours.`, ephemeral: true });
+        }
+
     } catch (err) {
         console.error('Slash command error:', err);
         if (!interaction.replied) {
