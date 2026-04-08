@@ -79,7 +79,7 @@ const client = new Client({
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.MessageContent
   ],
-  partials: [Partials.Message, Partials.Channel]
+  partials: [Partials.Message, Partials.Channel, Partials.Message]
 });
 
 // ===== clientReady and slash commands registration =====
@@ -118,7 +118,7 @@ client.once('clientReady', async () => {
   }, 12 * 60 * 60 * 1000);
 });
 
-// ===== Guild member events for autoroles and join logging =====
+// ===== Guild member events =====
 client.on('guildMemberAdd', member => {
   const roleId = autoroles[member.guild.id];
   if (roleId) {
@@ -134,6 +134,7 @@ client.on('guildMemberAdd', member => {
         .setTitle("Member Joined")
         .setDescription(`${member.user.tag} has joined the server.`)
         .setColor("Green")
+        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
         .setTimestamp();
       channel.send({ embeds: [embed] });
     }
@@ -223,7 +224,7 @@ client.on('interactionCreate', async interaction => {
       if (!channel) return interaction.reply({ content: 'Please specify a channel.', ephemeral: true });
       logChannels[guild.id] = channel.id;
       saveLogChannels();
-      await interaction.reply({ content: `Deleted message logs channel set to ${channel.name}`, ephemeral: true });
+      await interaction.reply({ content: `Deleted/edited message logs channel set to ${channel.name}`, ephemeral: true });
     }
 
     if (commandName === 'unwhitelist') {
@@ -248,17 +249,13 @@ client.on('messageCreate', async message => {
 
   // ===== ,role command =====
   if (command === "role") {
-    // Check admin
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return message.reply("You need admin permissions to use this command.");
     }
 
     const userMention = args.shift();
     const roleName = args.join(" ");
-
-    if (!userMention || !roleName) {
-      return message.reply("Usage: ,role @user RoleName");
-    }
+    if (!userMention || !roleName) return message.reply("Usage: ,role @user RoleName");
 
     const member = message.mentions.members.first();
     if (!member) return message.reply("Couldn't find that user in the server.");
@@ -273,10 +270,55 @@ client.on('messageCreate', async message => {
       message.reply("Failed to add role. Make sure the bot has permission and the role is below its highest role.");
     });
   }
-
-  // ===== You can keep all other ,commands here as before =====
 });
 
+// ===== Message logging (deleted, edited, attachments) =====
+client.on('messageDelete', async msg => {
+  if (!msg.guild) return;
+  const channelId = logChannels[msg.guild.id];
+  if (!channelId) return;
+
+  const channel = msg.guild.channels.cache.get(channelId);
+  if (!channel) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle("Message Deleted")
+    .setDescription(msg.content || "[No text content]")
+    .setAuthor({ name: msg.author.tag, iconURL: msg.author.displayAvatarURL({ dynamic: true }) })
+    .setColor("Red")
+    .setTimestamp();
+
+  if (msg.attachments.size > 0) {
+    embed.addFields({ name: "Attachments", value: msg.attachments.map(a => a.url).join("\n") });
+  }
+
+  channel.send({ embeds: [embed] });
+});
+
+client.on('messageUpdate', async (oldMsg, newMsg) => {
+  if (!newMsg.guild || oldMsg.content === newMsg.content) return;
+  const channelId = logChannels[newMsg.guild.id];
+  if (!channelId) return;
+
+  const channel = newMsg.guild.channels.cache.get(channelId);
+  if (!channel) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle("Message Edited")
+    .setAuthor({ name: newMsg.author.tag, iconURL: newMsg.author.displayAvatarURL({ dynamic: true }) })
+    .addFields(
+      { name: "Before", value: oldMsg.content || "[No text content]" },
+      { name: "After", value: newMsg.content || "[No text content]" }
+    )
+    .setColor("Orange")
+    .setTimestamp();
+
+  if (newMsg.attachments.size > 0) {
+    embed.addFields({ name: "Attachments", value: newMsg.attachments.map(a => a.url).join("\n") });
+  }
+
+  channel.send({ embeds: [embed] });
+});
 
 // ===== LOGIN =====
 client.login(process.env.TOKEN);
