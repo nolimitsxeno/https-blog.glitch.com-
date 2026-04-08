@@ -91,6 +91,7 @@ client.on('guildMemberAdd', member => {
         if (role) member.roles.add(role).catch(console.error);
     }
 
+    // Only send join embed if you manually set a channel in joinLogChannels
     const channelId = joinLogChannels[member.guild.id];
     if (!channelId) return;
     const channel = member.guild.channels.cache.get(channelId);
@@ -98,7 +99,7 @@ client.on('guildMemberAdd', member => {
 
     const embed = new EmbedBuilder()
         .setTitle('Member Joined')
-        .setDescription(`${member} has joined the server!`) // ping user
+        .setDescription(`${member} has joined the server!`) // pings user
         .addFields({ name: 'Account Created', value: `${member.user.createdAt.toUTCString()}` })
         .setColor('Green')
         .setTimestamp();
@@ -126,13 +127,13 @@ client.on('messageCreate', async message => {
     const command = args.shift().toLowerCase();
 
     if (command === 'hb') {
-        if (!args[0]) return; // do nothing if invalid
+        if (!args[0]) return;
         let userId;
         try {
             if (message.mentions.users.size) userId = message.mentions.users.first().id;
             else userId = args[0].replace(/[<@!>]/g, '');
             await client.users.fetch(userId);
-        } catch { return; } // invalid user, do nothing
+        } catch { return; }
         if (!hardbannedUsers.has(userId)) {
             hardbannedUsers.set(userId, true);
             saveHardbans();
@@ -150,7 +151,6 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     if (commandName === 'logs') {
-        // Save the channel for logging
         logChannels[interaction.guild.id] = interaction.channel.id;
         saveLogChannels();
         await interaction.reply({ content: `Logging enabled in ${interaction.channel}`, ephemeral: true });
