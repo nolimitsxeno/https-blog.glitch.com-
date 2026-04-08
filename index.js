@@ -98,7 +98,7 @@ client.on('guildMemberAdd', member => {
 
     const embed = new EmbedBuilder()
         .setTitle('Member Joined')
-        .setDescription(`${member} has joined the server!`) // pings user
+        .setDescription(`${member} has joined the server!`) // ping user
         .addFields({ name: 'Account Created', value: `${member.user.createdAt.toUTCString()}` })
         .setColor('Green')
         .setTimestamp();
@@ -156,7 +156,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ content: `Logging enabled in ${interaction.channel}`, ephemeral: true });
     }
 
-    // /logboosts untouched as requested, handled elsewhere
+    // /logboosts untouched
 });
 
 // ===== Login =====
