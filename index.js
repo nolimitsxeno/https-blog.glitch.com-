@@ -58,7 +58,7 @@ client.once('ready', () => {
             const channel = guild.channels.cache.get(channelId);
             if (channel) channel.send('Hello guys!');
         }
-    }, 2 * 60 * 60 * 1000); // 2 hours
+    }, 2 * 60 * 60 * 1000);
 });
 
 // ===== Logging events =====
@@ -91,7 +91,6 @@ client.on('guildMemberAdd', member => {
         if (role) member.roles.add(role).catch(console.error);
     }
 
-    // Only send join embed if you manually set a channel in joinLogChannels
     const channelId = joinLogChannels[member.guild.id];
     if (!channelId) return;
     const channel = member.guild.channels.cache.get(channelId);
@@ -99,7 +98,7 @@ client.on('guildMemberAdd', member => {
 
     const embed = new EmbedBuilder()
         .setTitle('Member Joined')
-        .setDescription(`${member} has joined the server!`) // pings user
+        .setDescription(`${member} has joined the server!`) // ping user
         .addFields({ name: 'Account Created', value: `${member.user.createdAt.toUTCString()}` })
         .setColor('Green')
         .setTimestamp();
@@ -140,7 +139,7 @@ client.on('messageCreate', async message => {
         }
         const member = message.guild.members.cache.get(userId);
         if (member) member.ban({ reason: 'Hardbanned by bot' }).catch(() => { });
-        await message.reply('👍'); // only thumbs up
+        await message.reply('👍');
     }
 });
 
@@ -150,13 +149,31 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    if (commandName === 'logs') {
-        logChannels[interaction.guild.id] = interaction.channel.id;
-        saveLogChannels();
-        await interaction.reply({ content: `Logging enabled in ${interaction.channel}`, ephemeral: true });
-    }
+    try {
+        if (commandName === 'logs') {
+            logChannels[interaction.guild.id] = interaction.channel.id;
+            saveLogChannels();
+            await interaction.reply({ content: `Logging enabled in ${interaction.channel}`, ephemeral: true });
+        }
 
-    // /logboosts untouched
+        if (commandName === 'logboosts') {
+            boostLogChannels[interaction.guild.id] = interaction.channel.id;
+            saveBoostLog();
+            await interaction.reply({ content: `Boost logs enabled in ${interaction.channel}`, ephemeral: true });
+        }
+
+        if (commandName === 'logjoins' || commandName === 'joinlogs') {
+            joinLogChannels[interaction.guild.id] = interaction.channel.id;
+            saveJoinLog();
+            await interaction.reply({ content: `Join logs enabled in ${interaction.channel}`, ephemeral: true });
+        }
+
+    } catch (err) {
+        console.error('Slash command error:', err);
+        if (!interaction.replied) {
+            await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true });
+        }
+    }
 });
 
 // ===== Login =====
