@@ -52,71 +52,91 @@ client.once('ready', () => {
 
     // /active messages every 2 hours
     setInterval(() => {
-        for (const [guildId, channelId] of Object.entries(activeChannels)) {
-            const guild = client.guilds.cache.get(guildId);
-            if (!guild) continue;
-            const channel = guild.channels.cache.get(channelId);
-            if (channel) channel.send('Hello guys!');
+        try {
+            for (const [guildId, channelId] of Object.entries(activeChannels)) {
+                const guild = client.guilds.cache.get(guildId);
+                if (!guild) continue;
+                const channel = guild.channels.cache.get(channelId);
+                if (channel) channel.send('Hello guys!');
+            }
+        } catch (err) {
+            console.error('Error in active timer:', err);
         }
     }, 2 * 60 * 60 * 1000);
 });
 
 // ===== Logging events =====
 client.on('messageDelete', async message => {
-    if (!message.guild) return;
-    const channelId = logChannels[message.guild.id];
-    if (!channelId) return;
-    const channel = message.guild.channels.cache.get(channelId);
-    if (!channel) return;
-    let content = message.content || '[No text]';
-    if (message.attachments.size) content += `\nAttachments: ${message.attachments.map(a => a.url).join(', ')}`;
-    channel.send(`🗑️ **Deleted message from ${message.author.tag}:** ${content}`);
+    try {
+        if (!message.guild) return;
+        const channelId = logChannels[message.guild.id];
+        if (!channelId) return;
+        const channel = message.guild.channels.cache.get(channelId);
+        if (!channel) return;
+        let content = message.content || '[No text]';
+        if (message.attachments.size) content += `\nAttachments: ${message.attachments.map(a => a.url).join(', ')}`;
+        channel.send(`🗑️ **Deleted message from ${message.author.tag}:** ${content}`);
+    } catch (err) {
+        console.error('Error in messageDelete:', err);
+    }
 });
 
 client.on('messageUpdate', async (oldMessage, newMessage) => {
-    if (!oldMessage.guild) return;
-    const channelId = logChannels[oldMessage.guild.id];
-    if (!channelId) return;
-    const channel = oldMessage.guild.channels.cache.get(channelId);
-    if (!channel) return;
-    if (oldMessage.content === newMessage.content) return;
-    channel.send(`✏️ **Edited message by ${oldMessage.author.tag}:**\nBefore: ${oldMessage.content}\nAfter: ${newMessage.content}`);
+    try {
+        if (!oldMessage.guild) return;
+        const channelId = logChannels[oldMessage.guild.id];
+        if (!channelId) return;
+        const channel = oldMessage.guild.channels.cache.get(channelId);
+        if (!channel) return;
+        if (oldMessage.content === newMessage.content) return;
+        channel.send(`✏️ **Edited message by ${oldMessage.author.tag}:**\nBefore: ${oldMessage.content}\nAfter: ${newMessage.content}`);
+    } catch (err) {
+        console.error('Error in messageUpdate:', err);
+    }
 });
 
 // ===== Guild events =====
 client.on('guildMemberAdd', member => {
-    const roleId = autoroles[member.guild.id];
-    if (roleId) {
-        const role = member.guild.roles.cache.get(roleId);
-        if (role) member.roles.add(role).catch(console.error);
+    try {
+        const roleId = autoroles[member.guild.id];
+        if (roleId) {
+            const role = member.guild.roles.cache.get(roleId);
+            if (role) member.roles.add(role).catch(console.error);
+        }
+
+        const channelId = joinLogChannels[member.guild.id];
+        if (!channelId) return;
+        const channel = member.guild.channels.cache.get(channelId);
+        if (!channel) return;
+
+        const embed = new EmbedBuilder()
+            .setTitle('Member Joined')
+            .setDescription(`${member} has joined the server!`)
+            .addFields({ name: 'Account Created', value: `${member.user.createdAt.toUTCString()}` })
+            .setColor('Green')
+            .setTimestamp();
+        channel.send({ embeds: [embed] });
+    } catch (err) {
+        console.error('Error in guildMemberAdd:', err);
     }
-
-    const channelId = joinLogChannels[member.guild.id];
-    if (!channelId) return;
-    const channel = member.guild.channels.cache.get(channelId);
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-        .setTitle('Member Joined')
-        .setDescription(`${member} has joined the server!`)
-        .addFields({ name: 'Account Created', value: `${member.user.createdAt.toUTCString()}` })
-        .setColor('Green')
-        .setTimestamp();
-    channel.send({ embeds: [embed] });
 });
 
 client.on('guildMemberRemove', member => {
-    const channelId = leaveLogChannels[member.guild.id] || joinLogChannels[member.guild.id];
-    if (!channelId) return;
-    const channel = member.guild.channels.cache.get(channelId);
-    if (!channel) return;
+    try {
+        const channelId = leaveLogChannels[member.guild.id] || joinLogChannels[member.guild.id];
+        if (!channelId) return;
+        const channel = member.guild.channels.cache.get(channelId);
+        if (!channel) return;
 
-    const embed = new EmbedBuilder()
-        .setTitle('Member Left')
-        .setDescription(`${member} has left the server.`)
-        .setColor('Red')
-        .setTimestamp();
-    channel.send({ embeds: [embed] });
+        const embed = new EmbedBuilder()
+            .setTitle('Member Left')
+            .setDescription(`${member} has left the server.`)
+            .setColor('Red')
+            .setTimestamp();
+        channel.send({ embeds: [embed] });
+    } catch (err) {
+        console.error('Error in guildMemberRemove:', err);
+    }
 });
 
 // ===== Prefix commands =====
@@ -126,21 +146,25 @@ client.on('messageCreate', async message => {
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    if (command === 'hb') {
-        if (!args[0]) return;
-        let userId;
-        try {
-            if (message.mentions.users.size) userId = message.mentions.users.first().id;
-            else userId = args[0].replace(/[<@!>]/g, '');
-            await client.users.fetch(userId);
-        } catch { return; }
-        if (!hardbannedUsers.has(userId)) {
-            hardbannedUsers.set(userId, true);
-            saveHardbans();
+    try {
+        if (command === 'hb') {
+            if (!args[0]) return;
+            let userId;
+            try {
+                if (message.mentions.users.size) userId = message.mentions.users.first().id;
+                else userId = args[0].replace(/[<@!>]/g, '');
+                await client.users.fetch(userId);
+            } catch { return; }
+            if (!hardbannedUsers.has(userId)) {
+                hardbannedUsers.set(userId, true);
+                saveHardbans();
+            }
+            const member = message.guild.members.cache.get(userId);
+            if (member) member.ban({ reason: 'Hardbanned by bot' }).catch(() => { });
+            await message.reply('👍');
         }
-        const member = message.guild.members.cache.get(userId);
-        if (member) member.ban({ reason: 'Hardbanned by bot' }).catch(() => { });
-        await message.reply('👍');
+    } catch (err) {
+        console.error('Error in prefix command:', err);
     }
 });
 
@@ -175,7 +199,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: `Leave logs enabled in ${interaction.channel}`, ephemeral: true });
         }
 
-        // ===== FIXED /autorole =====
+        // ===== Fixed /autorole =====
         if (commandName === 'autorole') {
             const role = interaction.options.getRole('role');
             if (!role) return interaction.reply({ content: '❌ You must select a role.', ephemeral: true });
@@ -184,7 +208,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: `✅ Autorole set to ${role}`, ephemeral: true });
         }
 
-        // ===== FIXED /active =====
+        // ===== Fixed /active =====
         if (commandName === 'active') {
             activeChannels[interaction.guild.id] = interaction.channel.id;
             saveActiveChannels();
