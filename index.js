@@ -14,12 +14,23 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ================= STORAGE =================
+// ================= SAFE FILE SYSTEM =================
 function load(file) {
-    return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
+    try {
+        if (!fs.existsSync(file)) return {};
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+        console.error(`Load error (${file}):`, e);
+        return {};
+    }
 }
+
 function save(file, data) {
-    fs.writeFileSync(file, JSON.stringify(data));
+    try {
+        fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    } catch (e) {
+        console.error(`Save error (${file}):`, e);
+    }
 }
 
 // ================= DATA =================
@@ -63,26 +74,18 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('activity')
             .setDescription('Set activity')
-            .addStringOption(o =>
-                o.setName('type').setRequired(true)
-            )
-            .addStringOption(o =>
-                o.setName('text').setRequired(true)
-            ),
+            .addStringOption(o => o.setName('type').setRequired(true))
+            .addStringOption(o => o.setName('text').setRequired(true)),
 
         new SlashCommandBuilder()
             .setName('dstatus')
             .setDescription('Set Discord status')
-            .addStringOption(o =>
-                o.setName('state').setRequired(true)
-            ),
+            .addStringOption(o => o.setName('state').setRequired(true)),
 
         new SlashCommandBuilder()
             .setName('setstatus')
             .setDescription('Set custom status')
-            .addStringOption(o =>
-                o.setName('text').setRequired(true)
-            )
+            .addStringOption(o => o.setName('text').setRequired(true))
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -95,115 +98,109 @@ client.once('ready', async () => {
 
         console.log("Slash commands registered");
     } catch (err) {
-        console.error(err);
+        console.error("Slash register error:", err);
     }
 });
 
-// ================= FORCE ROLE =================
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
-    try {
-        const data = forceRoles[newMember.guild.id];
-        if (!data) return;
-
-        const roles = data[newMember.id];
-        if (!roles) return;
-
-        for (const roleId of roles) {
-            if (!newMember.roles.cache.has(roleId)) {
-                const role = newMember.guild.roles.cache.get(roleId);
-                if (role) await newMember.roles.add(role).catch(() => {});
-            }
-        }
-    } catch (e) {
-        console.error(e);
-    }
-});
-
-// ================= LOGS SYSTEM =================
+// ================= LOG SYSTEM =================
 client.on('messageDelete', async message => {
-    if (!message.guild) return;
+    try {
+        if (!message.guild) return;
 
-    const channelId = logChannel[message.guild.id];
-    if (!channelId) return;
+        const channelId = logChannel?.[message.guild.id];
+        if (!channelId) return;
 
-    const channel = message.guild.channels.cache.get(channelId);
-    if (!channel) return;
+        const channel = message.guild.channels.cache.get(channelId);
+        if (!channel) return;
 
-    const image = message.attachments.first()?.url;
+        const image = message.attachments?.first()?.url;
 
-    channel.send({
-        content:
+        channel.send({
+            content:
 `🗑️ **Message Deleted**
-👤 User: ${message.author?.tag || 'Unknown'}
-💬 Content: ${message.content || '[no text]'}
-${image ? `🖼️ Image: ${image}` : ''}`
-    }).catch(() => {});
+👤 ${message.author?.tag || 'Unknown'}
+💬 ${message.content || '[no text]'}
+${image ? `🖼️ ${image}` : ''}`
+        }).catch(() => {});
+    } catch (e) {
+        console.error("delete log error:", e);
+    }
 });
 
 client.on('messageUpdate', async (oldMsg, newMsg) => {
-    if (!oldMsg.guild) return;
-    if (oldMsg.content === newMsg.content) return;
+    try {
+        if (!oldMsg.guild) return;
+        if (oldMsg.content === newMsg.content) return;
 
-    const channelId = logChannel[oldMsg.guild.id];
-    if (!channelId) return;
+        const channelId = logChannel?.[oldMsg.guild.id];
+        if (!channelId) return;
 
-    const channel = oldMsg.guild.channels.cache.get(channelId);
-    if (!channel) return;
+        const channel = oldMsg.guild.channels.cache.get(channelId);
+        if (!channel) return;
 
-    channel.send({
-        content:
+        channel.send({
+            content:
 `✏️ **Message Edited**
-👤 User: ${oldMsg.author?.tag || 'Unknown'}
-
+👤 ${oldMsg.author?.tag || 'Unknown'}
 Before: ${oldMsg.content || '[empty]'}
 After: ${newMsg.content || '[empty]'}`
-    }).catch(() => {});
+        }).catch(() => {});
+    } catch (e) {
+        console.error("edit log error:", e);
+    }
 });
 
 // ================= COMMAND HANDLER =================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
+    const { commandName } = interaction;
+
     try {
-        const { commandName } = interaction;
 
-        // ===== SET LOGS =====
+        // ================= SET LOGS =================
         if (commandName === 'setlogs') {
-            logChannel[interaction.guild.id] = interaction.channel.id;
-            save('logchannel.json', logChannel);
+            try {
+                if (!interaction.guild) {
+                    return interaction.reply({ content: 'Guild only', ephemeral: true });
+                }
 
-            return interaction.reply({
-                content: 'Logs channel set',
-                ephemeral: true
-            });
+                logChannel[interaction.guild.id] = interaction.channel.id;
+                save('logchannel.json', logChannel);
+
+                return interaction.reply({
+                    content: 'Logs channel set successfully',
+                    ephemeral: true
+                });
+            } catch (e) {
+                console.error("setlogs error:", e);
+                return interaction.reply({
+                    content: 'Failed to set logs',
+                    ephemeral: true
+                }).catch(() => {});
+            }
         }
 
-        // ===== DM =====
+        // ================= DM =================
         if (commandName === 'dm') {
             const user = interaction.options.getUser('user');
             const msg = interaction.options.getString('message');
 
             await user.send(msg).catch(() => {});
 
-            return interaction.reply({
-                content: 'DM sent',
-                ephemeral: true
-            });
+            return interaction.reply({ content: 'DM sent', ephemeral: true });
         }
 
-        // ===== SAY =====
+        // ================= SAY =================
         if (commandName === 'say') {
             const msg = interaction.options.getString('message');
 
             await interaction.channel.send(msg);
 
-            return interaction.reply({
-                content: 'Sent',
-                ephemeral: true
-            });
+            return interaction.reply({ content: 'Sent', ephemeral: true });
         }
 
-        // ===== VC =====
+        // ================= VC =================
         if (commandName === 'stayvc') {
             const { joinVoiceChannel } = require('@discordjs/voice');
 
@@ -230,7 +227,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Left VC', ephemeral: true });
         }
 
-        // ===== STATUS =====
+        // ================= STATUS =================
         if (commandName === 'dstatus') {
             client.user.setPresence({
                 status: interaction.options.getString('state')
@@ -239,7 +236,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Status set', ephemeral: true });
         }
 
-        // ===== ACTIVITY =====
+        // ================= ACTIVITY =================
         if (commandName === 'activity') {
             const type = interaction.options.getString('type');
             const text = interaction.options.getString('text');
@@ -259,7 +256,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Activity set', ephemeral: true });
         }
 
-        // ===== CUSTOM STATUS =====
+        // ================= CUSTOM STATUS =================
         if (commandName === 'setstatus') {
             const text = interaction.options.getString('text');
 
@@ -272,7 +269,7 @@ client.on('interactionCreate', async interaction => {
         }
 
     } catch (err) {
-        console.error(err);
+        console.error("Interaction error:", err);
 
         if (!interaction.replied) {
             return interaction.reply({
