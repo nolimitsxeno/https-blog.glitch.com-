@@ -6,7 +6,7 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ===== SAFE LOAD/SAVE =====
+// ===== SAFE FILE HELPERS =====
 function load(file) {
     return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
 }
@@ -17,7 +17,6 @@ function save(file, data) {
 // ===== DATA =====
 let forceRoles = load('forceroles.json');
 let vcStay = load('vcstay.json');
-let activeChannels = load('activechannels.json');
 
 // ===== CLIENT =====
 const client = new Client({
@@ -35,10 +34,9 @@ const client = new Client({
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
-    // ===== COMMANDS =====
     const commands = [
-        new SlashCommandBuilder().setName('stayvc').setDescription('Bot stays in VC'),
-        new SlashCommandBuilder().setName('unstayvc').setDescription('Stop VC stay'),
+        new SlashCommandBuilder().setName('stayvc').setDescription('Bot joins VC'),
+        new SlashCommandBuilder().setName('unstayvc').setDescription('Bot leaves VC'),
 
         new SlashCommandBuilder()
             .setName('status')
@@ -60,34 +58,21 @@ client.once('ready', async () => {
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-    try {
-        const GUILD_ID = process.env.GUILD_ID;
+    // ===== SAFE SLASH REGISTER (FIX) =====
+    setTimeout(async () => {
+        try {
+            const guildId = process.env.GUILD_ID;
 
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, GUILD_ID),
-            { body: commands }
-        );
+            await rest.put(
+                Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+                { body: commands }
+            );
 
-        console.log('Slash commands registered');
-    } catch (err) {
-        console.error('Command register error:', err);
-    }
-
-    // ===== AUTO REJOIN VC =====
-    for (const [guildId, channelId] of Object.entries(vcStay)) {
-        const guild = client.guilds.cache.get(guildId);
-        const channel = guild?.channels.cache.get(channelId);
-
-        if (!guild || !channel) continue;
-
-        const { joinVoiceChannel } = require('@discordjs/voice');
-
-        joinVoiceChannel({
-            channelId: channel.id,
-            guildId: guild.id,
-            adapterCreator: guild.voiceAdapterCreator
-        });
-    }
+            console.log("Slash commands registered successfully");
+        } catch (err) {
+            console.error("Slash command error:", err);
+        }
+    }, 5000);
 });
 
 // ===== FORCE ROLE SYSTEM =====
@@ -106,7 +91,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     }
 });
 
-// ===== COMMANDS =====
+// ===== INTERACTIONS =====
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -136,7 +121,7 @@ client.on('interactionCreate', async interaction => {
             delete vcStay[interaction.guild.id];
             save('vcstay.json', vcStay);
 
-            return interaction.reply({ content: 'Stopped VC stay', ephemeral: true });
+            return interaction.reply({ content: 'Left VC system', ephemeral: true });
         }
 
         if (commandName === 'status') {
