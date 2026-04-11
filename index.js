@@ -20,7 +20,7 @@ function load(file) {
         if (!fs.existsSync(file)) return {};
         return JSON.parse(fs.readFileSync(file, 'utf8'));
     } catch (e) {
-        console.error(`Load error (${file}):`, e);
+        console.error(`Load error ${file}:`, e);
         return {};
     }
 }
@@ -29,7 +29,7 @@ function save(file, data) {
     try {
         fs.writeFileSync(file, JSON.stringify(data, null, 2));
     } catch (e) {
-        console.error(`Save error (${file}):`, e);
+        console.error(`Save error ${file}:`, e);
     }
 }
 
@@ -55,8 +55,8 @@ client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
     const commands = [
-        new SlashCommandBuilder().setName('stayvc').setDescription('Bot joins VC'),
-        new SlashCommandBuilder().setName('unstayvc').setDescription('Bot leaves VC'),
+        new SlashCommandBuilder().setName('stayvc').setDescription('Join VC'),
+        new SlashCommandBuilder().setName('unstayvc').setDescription('Leave VC'),
 
         new SlashCommandBuilder().setName('setlogs').setDescription('Set logs channel'),
 
@@ -68,7 +68,7 @@ client.once('ready', async () => {
 
         new SlashCommandBuilder()
             .setName('say')
-            .setDescription('Send message in channel')
+            .setDescription('Send message')
             .addStringOption(o => o.setName('message').setRequired(true)),
 
         new SlashCommandBuilder()
@@ -102,7 +102,7 @@ client.once('ready', async () => {
     }
 });
 
-// ================= LOG SYSTEM =================
+// ================= LOGS =================
 client.on('messageDelete', async message => {
     try {
         if (!message.guild) return;
@@ -117,7 +117,7 @@ client.on('messageDelete', async message => {
 
         channel.send({
             content:
-`🗑️ **Message Deleted**
+`🗑️ Deleted Message
 👤 ${message.author?.tag || 'Unknown'}
 💬 ${message.content || '[no text]'}
 ${image ? `🖼️ ${image}` : ''}`
@@ -140,7 +140,7 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
 
         channel.send({
             content:
-`✏️ **Message Edited**
+`✏️ Edited Message
 👤 ${oldMsg.author?.tag || 'Unknown'}
 Before: ${oldMsg.content || '[empty]'}
 After: ${newMsg.content || '[empty]'}`
@@ -150,7 +150,7 @@ After: ${newMsg.content || '[empty]'}`
     }
 });
 
-// ================= COMMAND HANDLER =================
+// ================= COMMANDS =================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -158,7 +158,7 @@ client.on('interactionCreate', async interaction => {
 
     try {
 
-        // ================= SET LOGS =================
+        // ===== SET LOGS =====
         if (commandName === 'setlogs') {
             try {
                 if (!interaction.guild) {
@@ -168,39 +168,52 @@ client.on('interactionCreate', async interaction => {
                 logChannel[interaction.guild.id] = interaction.channel.id;
                 save('logchannel.json', logChannel);
 
-                return interaction.reply({
-                    content: 'Logs channel set successfully',
-                    ephemeral: true
-                });
+                return interaction.reply({ content: 'Logs set', ephemeral: true });
+
             } catch (e) {
-                console.error("setlogs error:", e);
-                return interaction.reply({
-                    content: 'Failed to set logs',
-                    ephemeral: true
-                }).catch(() => {});
+                console.error(e);
+                return interaction.reply({ content: 'Failed logs', ephemeral: true }).catch(() => {});
             }
         }
 
-        // ================= DM =================
+        // ===== DM =====
         if (commandName === 'dm') {
-            const user = interaction.options.getUser('user');
-            const msg = interaction.options.getString('message');
+            await interaction.deferReply({ ephemeral: true });
 
-            await user.send(msg).catch(() => {});
+            try {
+                const user = interaction.options.getUser('user');
+                const msg = interaction.options.getString('message');
 
-            return interaction.reply({ content: 'DM sent', ephemeral: true });
+                await user.send(msg).catch(() => {
+                    throw new Error('Cannot DM user');
+                });
+
+                return interaction.editReply('DM sent');
+
+            } catch (e) {
+                console.error(e);
+                return interaction.editReply('DM failed');
+            }
         }
 
-        // ================= SAY =================
+        // ===== SAY =====
         if (commandName === 'say') {
-            const msg = interaction.options.getString('message');
+            await interaction.deferReply({ ephemeral: true });
 
-            await interaction.channel.send(msg);
+            try {
+                const msg = interaction.options.getString('message');
 
-            return interaction.reply({ content: 'Sent', ephemeral: true });
+                await interaction.channel.send(msg);
+
+                return interaction.editReply('Sent');
+
+            } catch (e) {
+                console.error(e);
+                return interaction.editReply('Say failed');
+            }
         }
 
-        // ================= VC =================
+        // ===== VC =====
         if (commandName === 'stayvc') {
             const { joinVoiceChannel } = require('@discordjs/voice');
 
@@ -227,7 +240,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Left VC', ephemeral: true });
         }
 
-        // ================= STATUS =================
+        // ===== STATUS =====
         if (commandName === 'dstatus') {
             client.user.setPresence({
                 status: interaction.options.getString('state')
@@ -236,7 +249,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Status set', ephemeral: true });
         }
 
-        // ================= ACTIVITY =================
+        // ===== ACTIVITY =====
         if (commandName === 'activity') {
             const type = interaction.options.getString('type');
             const text = interaction.options.getString('text');
@@ -256,7 +269,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Activity set', ephemeral: true });
         }
 
-        // ================= CUSTOM STATUS =================
+        // ===== CUSTOM STATUS =====
         if (commandName === 'setstatus') {
             const text = interaction.options.getString('text');
 
@@ -273,7 +286,7 @@ client.on('interactionCreate', async interaction => {
 
         if (!interaction.replied) {
             return interaction.reply({
-                content: 'Bot error occurred',
+                content: 'Bot error',
                 ephemeral: true
             }).catch(() => {});
         }
