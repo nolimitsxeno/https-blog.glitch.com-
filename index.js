@@ -1,11 +1,18 @@
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, REST, Routes, SlashCommandBuilder } = require('discord.js');
-const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const fs = require('fs');
 const express = require('express');
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot is alive!'));
 app.listen(process.env.PORT || 5000);
+
+// ===== SAFE VOICE IMPORT (PREVENT CRASH) =====
+let voice;
+try {
+    voice = require('@discordjs/voice');
+} catch (e) {
+    console.log('⚠️ Voice module not installed. VC features disabled.');
+}
 
 // ===== STORAGE =====
 function load(file) { return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {}; }
@@ -36,7 +43,7 @@ const client = new Client({
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
-    // ================= SLASH COMMANDS =================
+    // ===== SLASH COMMANDS =====
     const commands = [
         new SlashCommandBuilder().setName('logs').setDescription('Set logs channel'),
         new SlashCommandBuilder().setName('logjoins').setDescription('Set join logs'),
@@ -60,8 +67,8 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('dm')
             .setDescription('DM user')
-            .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
-            .addStringOption(o => o.setName('text').setDescription('Text').setRequired(true)),
+            .addUserOption(o => o.setName('user').setRequired(true))
+            .addStringOption(o => o.setName('text').setRequired(true)),
 
         new SlashCommandBuilder()
             .setName('forcerole')
@@ -77,21 +84,17 @@ client.once('ready', async () => {
 
         new SlashCommandBuilder()
             .setName('status')
-            .setDescription('Change bot status')
+            .setDescription('Set bot status')
             .addStringOption(o => o.setName('text').setRequired(true))
-            .addIntegerOption(o =>
-                o.setName('type')
-                    .setDescription('0=Playing 1=Streaming 2=Listening 3=Watching')
-                    .setRequired(false)
-            ),
+            .addIntegerOption(o => o.setName('type').setRequired(false)),
 
         new SlashCommandBuilder()
             .setName('stayvc')
-            .setDescription('Make bot stay in VC'),
+            .setDescription('Bot stay in VC'),
 
         new SlashCommandBuilder()
             .setName('unstayvc')
-            .setDescription('Remove VC stay')
+            .setDescription('Stop VC stay')
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -106,18 +109,20 @@ client.once('ready', async () => {
         console.error(err);
     }
 
-    // ================= REJOIN VC =================
-    for (const [guildId, channelId] of Object.entries(vcStay)) {
-        const guild = client.guilds.cache.get(guildId);
-        const channel = guild?.channels.cache.get(channelId);
+    // ===== VC REJOIN (SAFE) =====
+    if (voice) {
+        for (const [guildId, channelId] of Object.entries(vcStay)) {
+            const guild = client.guilds.cache.get(guildId);
+            const channel = guild?.channels.cache.get(channelId);
 
-        if (!guild || !channel) continue;
+            if (!guild || !channel) continue;
 
-        joinVoiceChannel({
-            channelId: channel.id,
-            guildId: guild.id,
-            adapterCreator: guild.voiceAdapterCreator
-        });
+            voice.joinVoiceChannel({
+                channelId: channel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator
+            });
+        }
     }
 
     // ACTIVE LOOP
@@ -145,25 +150,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     }
 });
 
-// ===== VC AUTO REJOIN =====
-client.on('voiceStateUpdate', (oldState, newState) => {
-    const guildId = oldState.guild.id;
-    const saved = vcStay[guildId];
-    if (!saved) return;
-
-    if (oldState.id === client.user.id && !newState.channelId) {
-        const channel = oldState.guild.channels.cache.get(saved);
-        if (!channel) return;
-
-        joinVoiceChannel({
-            channelId: channel.id,
-            guildId: guildId,
-            adapterCreator: channel.guild.voiceAdapterCreator
-        });
-    }
-});
-
-// ===== COMMAND HANDLER =====
+// ===== STATUS =====
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -185,29 +172,33 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (name === 'stayvc') {
+            if (!voice) return interaction.editReply('VC not installed.');
+
             const channel = interaction.member.voice.channel;
-            if (!channel) return interaction.editReply('Join a VC first.');
+            if (!channel) return interaction.editReply('Join VC first.');
 
             vcStay[interaction.guild.id] = channel.id;
             save('vcstay.json', vcStay);
 
-            joinVoiceChannel({
+            voice.joinVoiceChannel({
                 channelId: channel.id,
                 guildId: channel.guild.id,
                 adapterCreator: channel.guild.voiceAdapterCreator
             });
 
-            return interaction.editReply('Now staying in VC.');
+            return interaction.editReply('Staying in VC.');
         }
 
         if (name === 'unstayvc') {
             delete vcStay[interaction.guild.id];
             save('vcstay.json', vcStay);
 
-            const conn = getVoiceConnection(interaction.guild.id);
-            if (conn) conn.destroy();
+            if (voice) {
+                const conn = voice.getVoiceConnection(interaction.guild.id);
+                if (conn) conn.destroy();
+            }
 
-            return interaction.editReply('Left VC stay mode.');
+            return interaction.editReply('Stopped VC stay.');
         }
 
         if (name === 'forcerole') {
@@ -226,7 +217,7 @@ client.on('interactionCreate', async interaction => {
             const member = await interaction.guild.members.fetch(user.id).catch(() => null);
             if (member) await member.roles.add(role).catch(() => {});
 
-            return interaction.editReply('Role forced.');
+            return interaction.editReply('Forced.');
         }
 
         if (name === 'unforcerole') {
@@ -234,7 +225,7 @@ client.on('interactionCreate', async interaction => {
             const role = interaction.options.getRole('role');
 
             const roles = forceRoles[interaction.guild.id]?.[user.id];
-            if (!roles) return interaction.editReply('No forced roles.');
+            if (!roles) return interaction.editReply('None.');
 
             forceRoles[interaction.guild.id][user.id] =
                 roles.filter(r => r !== role.id);
@@ -244,7 +235,7 @@ client.on('interactionCreate', async interaction => {
             const member = await interaction.guild.members.fetch(user.id).catch(() => null);
             if (member) await member.roles.remove(role).catch(() => {});
 
-            return interaction.editReply('Unforced.');
+            return interaction.editReply('Removed.');
         }
 
     } catch (err) {
