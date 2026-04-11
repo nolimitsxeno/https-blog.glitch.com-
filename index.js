@@ -1,4 +1,12 @@
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    Partials, 
+    REST, 
+    Routes, 
+    SlashCommandBuilder 
+} = require('discord.js');
+
 const fs = require('fs');
 const express = require('express');
 
@@ -6,7 +14,7 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ===== STORAGE =====
+// ================= STORAGE =================
 function load(file) {
     return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
 }
@@ -14,11 +22,11 @@ function save(file, data) {
     fs.writeFileSync(file, JSON.stringify(data));
 }
 
-// ===== DATA =====
+// ================= DATA =================
 let forceRoles = load('forceroles.json');
 let vcStay = load('vcstay.json');
 
-// ===== CLIENT =====
+// ================= CLIENT =================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -30,11 +38,11 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel]
 });
 
-// ===== READY =====
+// ================= READY =================
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
-    // ===== SLASH COMMANDS (SAFE REGISTER) =====
+    // ================= COMMANDS =================
     const commands = [
         new SlashCommandBuilder().setName('stayvc').setDescription('Bot joins VC'),
         new SlashCommandBuilder().setName('unstayvc').setDescription('Bot leaves VC'),
@@ -42,38 +50,66 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('status')
             .setDescription('Set bot status')
-            .addStringOption(o => o.setName('text').setRequired(true)),
+            .addStringOption(o =>
+                o.setName('text')
+                 .setDescription('Status text')
+                 .setRequired(true)
+            ),
 
         new SlashCommandBuilder()
             .setName('forcerole')
-            .setDescription('Force role')
-            .addUserOption(o => o.setName('user').setRequired(true))
-            .addRoleOption(o => o.setName('role').setRequired(true)),
+            .setDescription('Force role on user')
+            .addUserOption(o =>
+                o.setName('user')
+                 .setDescription('User')
+                 .setRequired(true)
+            )
+            .addRoleOption(o =>
+                o.setName('role')
+                 .setDescription('Role')
+                 .setRequired(true)
+            ),
 
         new SlashCommandBuilder()
             .setName('unforcerole')
             .setDescription('Remove forced role')
-            .addUserOption(o => o.setName('user').setRequired(true))
-            .addRoleOption(o => o.setName('role').setRequired(true))
+            .addUserOption(o =>
+                o.setName('user')
+                 .setDescription('User')
+                 .setRequired(true)
+            )
+            .addRoleOption(o =>
+                o.setName('role')
+                 .setDescription('Role')
+                 .setRequired(true)
+            )
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
     try {
+        console.log("Registering slash commands...");
+
         const guildId = process.env.GUILD_ID;
+        const clientId = process.env.CLIENT_ID;
+
+        if (!guildId || !clientId) {
+            console.log("Missing CLIENT_ID or GUILD_ID in environment variables");
+            return;
+        }
 
         await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+            Routes.applicationGuildCommands(clientId, guildId),
             { body: commands }
         );
 
         console.log("Slash commands registered successfully");
     } catch (err) {
-        console.error("Slash register error:", err);
+        console.error("Slash command register error:", err);
     }
 });
 
-// ===== FORCE ROLE SYSTEM =====
+// ================= FORCE ROLE SYSTEM =================
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     const data = forceRoles[newMember.guild.id];
     if (!data) return;
@@ -89,7 +125,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     }
 });
 
-// ===== COMMANDS =====
+// ================= INTERACTIONS =================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -97,6 +133,7 @@ client.on('interactionCreate', async interaction => {
 
     try {
 
+        // ===== VC JOIN =====
         if (commandName === 'stayvc') {
             const { joinVoiceChannel } = require('@discordjs/voice');
 
@@ -115,6 +152,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Joined VC', ephemeral: true });
         }
 
+        // ===== VC LEAVE =====
         if (commandName === 'unstayvc') {
             delete vcStay[interaction.guild.id];
             save('vcstay.json', vcStay);
@@ -122,6 +160,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Left VC system', ephemeral: true });
         }
 
+        // ===== STATUS =====
         if (commandName === 'status') {
             const text = interaction.options.getString('text');
 
@@ -133,6 +172,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Status updated', ephemeral: true });
         }
 
+        // ===== FORCE ROLE =====
         if (commandName === 'forcerole') {
             const user = interaction.options.getUser('user');
             const role = interaction.options.getRole('role');
@@ -149,6 +189,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Role forced', ephemeral: true });
         }
 
+        // ===== UNFORCE ROLE =====
         if (commandName === 'unforcerole') {
             const user = interaction.options.getUser('user');
             const role = interaction.options.getRole('role');
@@ -169,8 +210,9 @@ client.on('interactionCreate', async interaction => {
 
     } catch (err) {
         console.error(err);
-        interaction.reply({ content: 'Error occurred', ephemeral: true });
+        return interaction.reply({ content: 'Error occurred', ephemeral: true });
     }
 });
 
+// ================= LOGIN =================
 client.login(process.env.TOKEN);
