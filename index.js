@@ -14,7 +14,7 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ================= SAFE STORAGE =================
+// ================= STORAGE =================
 function load(file) {
     return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
 }
@@ -42,12 +42,24 @@ const client = new Client({
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
-    // ONLY NEW COMMANDS ADDED (DO NOT TOUCH OLD ONES)
     const commands = [
         new SlashCommandBuilder().setName('stayvc').setDescription('Bot joins VC'),
         new SlashCommandBuilder().setName('unstayvc').setDescription('Bot leaves VC'),
 
-        // 🟢 Discord status
+        new SlashCommandBuilder()
+            .setName('activity')
+            .setDescription('Set activity')
+            .addStringOption(o =>
+                o.setName('type')
+                    .setDescription('PLAYING / WATCHING / LISTENING / COMPETING')
+                    .setRequired(true)
+            )
+            .addStringOption(o =>
+                o.setName('text')
+                    .setDescription('Activity text')
+                    .setRequired(true)
+            ),
+
         new SlashCommandBuilder()
             .setName('dstatus')
             .setDescription('Set Discord status')
@@ -57,22 +69,6 @@ client.once('ready', async () => {
                     .setRequired(true)
             ),
 
-        // 🎮 Activity
-        new SlashCommandBuilder()
-            .setName('activity')
-            .setDescription('Set activity status')
-            .addStringOption(o =>
-                o.setName('type')
-                    .setDescription('PLAYING / WATCHING / LISTENING / COMPETING')
-                    .setRequired(true)
-            )
-            .addStringOption(o =>
-                o.setName('text')
-                    .setDescription('What to show')
-                    .setRequired(true)
-            ),
-
-        // 📝 Custom status text
         new SlashCommandBuilder()
             .setName('setstatus')
             .setDescription('Set custom status text')
@@ -86,48 +82,45 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
     try {
-        const guildId = process.env.GUILD_ID;
-        const clientId = process.env.CLIENT_ID;
-
         await rest.put(
-            Routes.applicationGuildCommands(clientId, guildId),
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
             { body: commands }
         );
 
-        console.log("Slash commands registered successfully");
+        console.log("Slash commands registered");
     } catch (err) {
         console.error("Slash register error:", err);
     }
 });
 
-// ================= FORCE ROLE (UNCHANGED LOGIC) =================
+// ================= FORCE ROLE =================
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
-    const data = forceRoles[newMember.guild.id];
-    if (!data) return;
+    try {
+        const data = forceRoles[newMember.guild.id];
+        if (!data) return;
 
-    const roles = data[newMember.id];
-    if (!roles) return;
+        const roles = data[newMember.id];
+        if (!roles) return;
 
-    for (const roleId of roles) {
-        if (!newMember.roles.cache.has(roleId)) {
-            const role = newMember.guild.roles.cache.get(roleId);
-            if (role) await newMember.roles.add(role).catch(() => {});
+        for (const roleId of roles) {
+            if (!newMember.roles.cache.has(roleId)) {
+                const role = newMember.guild.roles.cache.get(roleId);
+                if (role) await newMember.roles.add(role).catch(() => {});
+            }
         }
+    } catch (e) {
+        console.error("ForceRole error:", e);
     }
 });
 
-// ================= COMMAND HANDLER =================
+// ================= SAFE INTERACTION HANDLER =================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName } = interaction;
-
     try {
+        const { commandName } = interaction;
 
-        // ===== YOUR OLD COMMANDS WILL STILL WORK =====
-        // (/logs, /dm, /say etc are NOT touched here)
-
-        // ===== VC =====
+        // ================= VC =================
         if (commandName === 'stayvc') {
             const { joinVoiceChannel } = require('@discordjs/voice');
 
@@ -154,12 +147,11 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Left VC system', ephemeral: true });
         }
 
-        // ===== 🟢 DISCORD STATUS =====
+        // ================= STATUS =================
         if (commandName === 'dstatus') {
             const state = interaction.options.getString('state').toLowerCase();
 
-            const valid = ['online', 'idle', 'dnd', 'invisible'];
-            if (!valid.includes(state)) {
+            if (!['online', 'idle', 'dnd', 'invisible'].includes(state)) {
                 return interaction.reply({ content: 'Invalid status', ephemeral: true });
             }
 
@@ -168,7 +160,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: `Status set to ${state}`, ephemeral: true });
         }
 
-        // ===== 🎮 ACTIVITY =====
+        // ================= ACTIVITY =================
         if (commandName === 'activity') {
             const type = interaction.options.getString('type').toUpperCase();
             const text = interaction.options.getString('text');
@@ -182,38 +174,41 @@ client.on('interactionCreate', async interaction => {
             };
 
             client.user.setPresence({
-                activities: [
-                    {
-                        name: text,
-                        type: map[type] ?? 0
-                    }
-                ],
+                activities: [{ name: text, type: map[type] ?? 0 }],
                 status: 'online'
             });
 
-            return interaction.reply({ content: `Activity set`, ephemeral: true });
+            return interaction.reply({ content: 'Activity set', ephemeral: true });
         }
 
-        // ===== 📝 CUSTOM STATUS TEXT =====
+        // ================= CUSTOM STATUS =================
         if (commandName === 'setstatus') {
             const text = interaction.options.getString('text');
 
             client.user.setPresence({
-                activities: [
-                    {
-                        name: text,
-                        type: 4
-                    }
-                ],
+                activities: [{ name: text, type: 4 }],
                 status: 'online'
             });
 
-            return interaction.reply({ content: `Status updated`, ephemeral: true });
+            return interaction.reply({ content: 'Status set', ephemeral: true });
         }
 
+        // ================= SAFE FALLBACK (FIXES YOUR ERROR) =================
+        // This prevents "App did not respond"
+        return interaction.reply({
+            content: `Command "${commandName}" is not handled in this file.`,
+            ephemeral: true
+        });
+
     } catch (err) {
-        console.error(err);
-        return interaction.reply({ content: 'Error occurred', ephemeral: true });
+        console.error("Interaction error:", err);
+
+        if (!interaction.replied) {
+            return interaction.reply({
+                content: 'Bot error occurred',
+                ephemeral: true
+            }).catch(() => {});
+        }
     }
 });
 
