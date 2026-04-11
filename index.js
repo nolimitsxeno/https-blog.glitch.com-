@@ -42,74 +42,73 @@ const client = new Client({
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
-    // ================= COMMANDS =================
     const commands = [
         new SlashCommandBuilder().setName('stayvc').setDescription('Bot joins VC'),
         new SlashCommandBuilder().setName('unstayvc').setDescription('Bot leaves VC'),
 
+        // 🟢 Discord status
         new SlashCommandBuilder()
-            .setName('status')
-            .setDescription('Set bot status')
+            .setName('dstatus')
+            .setDescription('Set Discord status')
+            .addStringOption(o =>
+                o.setName('state')
+                 .setDescription('online / idle / dnd / invisible')
+                 .setRequired(true)
+            ),
+
+        // 🎮 Activity (proper rich status)
+        new SlashCommandBuilder()
+            .setName('activity')
+            .setDescription('Set rich activity')
+            .addStringOption(o =>
+                o.setName('type')
+                 .setDescription('PLAYING / WATCHING / LISTENING / COMPETING')
+                 .setRequired(true)
+            )
             .addStringOption(o =>
                 o.setName('text')
-                 .setDescription('Status text')
+                 .setDescription('Activity text')
+                 .setRequired(true)
+            ),
+
+        // 📝 SIMPLE STATUS TEXT (custom message)
+        new SlashCommandBuilder()
+            .setName('setstatus')
+            .setDescription('Set simple status text')
+            .addStringOption(o =>
+                o.setName('text')
+                 .setDescription('Status message')
                  .setRequired(true)
             ),
 
         new SlashCommandBuilder()
             .setName('forcerole')
             .setDescription('Force role on user')
-            .addUserOption(o =>
-                o.setName('user')
-                 .setDescription('User')
-                 .setRequired(true)
-            )
-            .addRoleOption(o =>
-                o.setName('role')
-                 .setDescription('Role')
-                 .setRequired(true)
-            ),
+            .addUserOption(o => o.setName('user').setRequired(true))
+            .addRoleOption(o => o.setName('role').setRequired(true)),
 
         new SlashCommandBuilder()
             .setName('unforcerole')
             .setDescription('Remove forced role')
-            .addUserOption(o =>
-                o.setName('user')
-                 .setDescription('User')
-                 .setRequired(true)
-            )
-            .addRoleOption(o =>
-                o.setName('role')
-                 .setDescription('Role')
-                 .setRequired(true)
-            )
+            .addUserOption(o => o.setName('user').setRequired(true))
+            .addRoleOption(o => o.setName('role').setRequired(true))
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
     try {
-        console.log("Registering slash commands...");
-
-        const guildId = process.env.GUILD_ID;
-        const clientId = process.env.CLIENT_ID;
-
-        if (!guildId || !clientId) {
-            console.log("Missing CLIENT_ID or GUILD_ID in environment variables");
-            return;
-        }
-
         await rest.put(
-            Routes.applicationGuildCommands(clientId, guildId),
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
             { body: commands }
         );
 
         console.log("Slash commands registered successfully");
     } catch (err) {
-        console.error("Slash command register error:", err);
+        console.error("Slash register error:", err);
     }
 });
 
-// ================= FORCE ROLE SYSTEM =================
+// ================= FORCE ROLE =================
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     const data = forceRoles[newMember.guild.id];
     if (!data) return;
@@ -125,7 +124,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     }
 });
 
-// ================= INTERACTIONS =================
+// ================= COMMANDS =================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -133,7 +132,7 @@ client.on('interactionCreate', async interaction => {
 
     try {
 
-        // ===== VC JOIN =====
+        // ===== VC =====
         if (commandName === 'stayvc') {
             const { joinVoiceChannel } = require('@discordjs/voice');
 
@@ -152,7 +151,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Joined VC', ephemeral: true });
         }
 
-        // ===== VC LEAVE =====
         if (commandName === 'unstayvc') {
             delete vcStay[interaction.guild.id];
             save('vcstay.json', vcStay);
@@ -160,16 +158,63 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Left VC system', ephemeral: true });
         }
 
-        // ===== STATUS =====
-        if (commandName === 'status') {
-            const text = interaction.options.getString('text');
+        // ===== 🟢 DISCORD STATUS =====
+        if (commandName === 'dstatus') {
+            const state = interaction.options.getString('state').toLowerCase();
+
+            const valid = ['online', 'idle', 'dnd', 'invisible'];
+            if (!valid.includes(state)) {
+                return interaction.reply({ content: 'Invalid status', ephemeral: true });
+            }
 
             client.user.setPresence({
-                activities: [{ name: text }],
+                status: state
+            });
+
+            return interaction.reply({ content: `Status set to ${state}`, ephemeral: true });
+        }
+
+        // ===== 🎮 ACTIVITY =====
+        if (commandName === 'activity') {
+            const type = interaction.options.getString('type').toUpperCase();
+            const text = interaction.options.getString('text');
+
+            const map = {
+                PLAYING: 0,
+                STREAMING: 1,
+                LISTENING: 2,
+                WATCHING: 3,
+                COMPETING: 5
+            };
+
+            client.user.setPresence({
+                activities: [
+                    {
+                        name: text,
+                        type: map[type] ?? 0
+                    }
+                ],
                 status: 'online'
             });
 
-            return interaction.reply({ content: 'Status updated', ephemeral: true });
+            return interaction.reply({ content: `Activity set: ${type} ${text}`, ephemeral: true });
+        }
+
+        // ===== 📝 SIMPLE STATUS TEXT =====
+        if (commandName === 'setstatus') {
+            const text = interaction.options.getString('text');
+
+            client.user.setPresence({
+                activities: [
+                    {
+                        name: text,
+                        type: 4 // custom status
+                    }
+                ],
+                status: 'online'
+            });
+
+            return interaction.reply({ content: `Status text set`, ephemeral: true });
         }
 
         // ===== FORCE ROLE =====
@@ -189,7 +234,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: 'Role forced', ephemeral: true });
         }
 
-        // ===== UNFORCE ROLE =====
         if (commandName === 'unforcerole') {
             const user = interaction.options.getUser('user');
             const role = interaction.options.getRole('role');
