@@ -6,7 +6,7 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ===== SAFE FILE HELPERS =====
+// ===== STORAGE =====
 function load(file) {
     return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
 }
@@ -34,6 +34,7 @@ const client = new Client({
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
+    // ===== SLASH COMMANDS (SAFE REGISTER) =====
     const commands = [
         new SlashCommandBuilder().setName('stayvc').setDescription('Bot joins VC'),
         new SlashCommandBuilder().setName('unstayvc').setDescription('Bot leaves VC'),
@@ -45,7 +46,7 @@ client.once('ready', async () => {
 
         new SlashCommandBuilder()
             .setName('forcerole')
-            .setDescription('Force role on user')
+            .setDescription('Force role')
             .addUserOption(o => o.setName('user').setRequired(true))
             .addRoleOption(o => o.setName('role').setRequired(true)),
 
@@ -58,21 +59,18 @@ client.once('ready', async () => {
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-    // ===== SAFE SLASH REGISTER (FIX) =====
-    setTimeout(async () => {
-        try {
-            const guildId = process.env.GUILD_ID;
+    try {
+        const guildId = process.env.GUILD_ID;
 
-            await rest.put(
-                Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
-                { body: commands }
-            );
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+            { body: commands }
+        );
 
-            console.log("Slash commands registered successfully");
-        } catch (err) {
-            console.error("Slash command error:", err);
-        }
-    }, 5000);
+        console.log("Slash commands registered successfully");
+    } catch (err) {
+        console.error("Slash register error:", err);
+    }
 });
 
 // ===== FORCE ROLE SYSTEM =====
@@ -91,7 +89,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     }
 });
 
-// ===== INTERACTIONS =====
+// ===== COMMANDS =====
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
