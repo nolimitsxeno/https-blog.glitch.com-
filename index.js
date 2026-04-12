@@ -26,7 +26,7 @@ function load(file) {
 
 function save(file, data) {
     try {
-        fs.writeFileSync(file, JSON.stringify(data));
+        fs.writeFileSync(file, JSON.stringify(data, null, 2));
     } catch {}
 }
 
@@ -49,7 +49,7 @@ client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
     const commands = [
-        new SlashCommandBuilder().setName('setlogs').setDescription('Set logs channel'),
+        new SlashCommandBuilder().setName('logs').setDescription('Set logs channel'),
 
         new SlashCommandBuilder()
             .setName('dm')
@@ -59,7 +59,7 @@ client.once('ready', async () => {
 
         new SlashCommandBuilder()
             .setName('say')
-            .setDescription('Send message')
+            .setDescription('Send message in channel')
             .addStringOption(o => o.setName('message').setRequired(true))
     ];
 
@@ -73,11 +73,11 @@ client.once('ready', async () => {
 
         console.log("Slash commands registered");
     } catch (err) {
-        console.error(err);
+        console.error("Slash register error:", err);
     }
 });
 
-// ================= LOGS =================
+// ================= LOG SYSTEM =================
 client.on('messageDelete', async message => {
     try {
         if (!message.guild) return;
@@ -88,7 +88,15 @@ client.on('messageDelete', async message => {
         const channel = message.guild.channels.cache.get(channelId);
         if (!channel) return;
 
-        channel.send(`🗑️ Deleted: ${message.content || '[no text]'}`).catch(() => {});
+        const image = message.attachments?.first()?.url;
+
+        channel.send({
+            content:
+`🗑️ **Message Deleted**
+👤 ${message.author?.tag || 'Unknown'}
+💬 ${message.content || '[no text]'}
+${image ? `🖼️ ${image}` : ''}`
+        }).catch(() => {});
     } catch {}
 });
 
@@ -103,7 +111,13 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
         const channel = oldMsg.guild.channels.cache.get(channelId);
         if (!channel) return;
 
-        channel.send(`✏️ Edited:\nBefore: ${oldMsg.content}\nAfter: ${newMsg.content}`).catch(() => {});
+        channel.send({
+            content:
+`✏️ **Message Edited**
+👤 ${oldMsg.author?.tag || 'Unknown'}
+Before: ${oldMsg.content || '[empty]'}
+After: ${newMsg.content || '[empty]'}`
+        }).catch(() => {});
     } catch {}
 });
 
@@ -115,45 +129,53 @@ client.on('interactionCreate', async interaction => {
 
     try {
 
-        // ===== SET LOGS =====
-        if (commandName === 'setlogs') {
+        // ===== /LOGS =====
+        if (commandName === 'logs') {
             logChannel[interaction.guild.id] = interaction.channel.id;
             save('logchannel.json', logChannel);
 
             return interaction.reply({
-                content: 'Logs channel set',
+                content: 'Logs channel set successfully',
                 ephemeral: true
             });
         }
 
-        // ===== DM =====
+        // ===== /DM =====
         if (commandName === 'dm') {
-            const user = interaction.options.getUser('user');
-            const msg = interaction.options.getString('message');
+            await interaction.deferReply({ ephemeral: true });
 
             try {
-                await user.send(msg);
-                return interaction.reply({ content: 'DM sent', ephemeral: true });
+                const user = interaction.options.getUser('user');
+                const msg = interaction.options.getString('message');
+
+                await user.send(msg).catch(() => {
+                    throw new Error('Cannot DM user');
+                });
+
+                return interaction.editReply('DM sent');
             } catch {
-                return interaction.reply({ content: 'Cannot DM user', ephemeral: true });
+                return interaction.editReply('Failed to send DM');
             }
         }
 
-        // ===== SAY =====
+        // ===== /SAY =====
         if (commandName === 'say') {
-            const msg = interaction.options.getString('message');
+            await interaction.deferReply({ ephemeral: true });
 
-            await interaction.channel.send(msg);
+            try {
+                const msg = interaction.options.getString('message');
 
-            return interaction.reply({
-                content: 'Sent',
-                ephemeral: true
-            });
+                await interaction.channel.send(msg);
+
+                return interaction.editReply('Message sent');
+            } catch {
+                return interaction.editReply('Failed to send message');
+            }
         }
 
         // ===== FALLBACK SAFETY =====
         return interaction.reply({
-            content: 'Command received but not handled.',
+            content: 'Command not handled',
             ephemeral: true
         });
 
@@ -162,7 +184,7 @@ client.on('interactionCreate', async interaction => {
 
         if (!interaction.replied) {
             return interaction.reply({
-                content: 'Bot error',
+                content: 'Bot error occurred',
                 ephemeral: true
             }).catch(() => {});
         }
