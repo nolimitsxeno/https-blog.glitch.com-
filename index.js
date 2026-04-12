@@ -10,11 +10,12 @@ const {
 const fs = require('fs');
 const express = require('express');
 
+// ================= KEEP ALIVE =================
 const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ================= SAFE STORAGE =================
+// ================= STORAGE =================
 function load(file) {
     try {
         if (!fs.existsSync(file)) return {};
@@ -29,7 +30,6 @@ function save(file, data) {
     } catch {}
 }
 
-// ================= DATA =================
 let logs = load('logs.json');
 let joinLogs = load('joinlogs.json');
 
@@ -66,15 +66,19 @@ client.once('ready', async () => {
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-    await rest.put(
-        Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-        { body: commands }
-    );
+    try {
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+            { body: commands }
+        );
 
-    console.log("Commands registered");
+        console.log("Commands registered");
+    } catch (err) {
+        console.error("Command register error:", err);
+    }
 });
 
-// ================= LOG DELETE =================
+// ================= LOGS =================
 client.on('messageDelete', async msg => {
     try {
         if (!msg.guild) return;
@@ -85,20 +89,10 @@ client.on('messageDelete', async msg => {
         const channel = await msg.guild.channels.fetch(channelId).catch(() => null);
         if (!channel) return;
 
-        const image = msg.attachments?.first()?.url;
-
-        channel.send(
-`🗑️ Deleted
-User: ${msg.author?.tag || 'unknown'}
-Message: ${msg.content || 'none'}
-${image ? `Image: ${image}` : ''}`
-        ).catch(() => {});
-    } catch (e) {
-        console.error("delete log error", e);
-    }
+        channel.send(`🗑️ Deleted: ${msg.content || 'none'}`).catch(() => {});
+    } catch {}
 });
 
-// ================= LOG EDIT =================
 client.on('messageUpdate', async (oldMsg, newMsg) => {
     try {
         if (!oldMsg.guild) return;
@@ -110,18 +104,10 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
         const channel = await oldMsg.guild.channels.fetch(channelId).catch(() => null);
         if (!channel) return;
 
-        channel.send(
-`✏️ Edited
-User: ${oldMsg.author?.tag || 'unknown'}
-Before: ${oldMsg.content || 'none'}
-After: ${newMsg.content || 'none'}`
-        ).catch(() => {});
-    } catch (e) {
-        console.error("edit log error", e);
-    }
+        channel.send(`✏️ Edited:\nBefore: ${oldMsg.content}\nAfter: ${newMsg.content}`).catch(() => {});
+    } catch {}
 });
 
-// ================= JOIN LOG =================
 client.on('guildMemberAdd', async member => {
     try {
         const channelId = joinLogs[member.guild.id];
@@ -131,20 +117,16 @@ client.on('guildMemberAdd', async member => {
         if (!channel) return;
 
         channel.send(`📥 Joined: ${member.user.tag}`).catch(() => {});
-    } catch (e) {
-        console.error("join log error", e);
-    }
+    } catch {}
 });
 
-// ================= COMMANDS =================
+// ================= COMMAND HANDLER =================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const name = interaction.commandName;
 
     try {
-
-        // always acknowledge immediately
         await interaction.deferReply({ ephemeral: true });
 
         // ===== LOGS =====
@@ -152,7 +134,7 @@ client.on('interactionCreate', async interaction => {
             logs[interaction.guild.id] = interaction.channel.id;
             save('logs.json', logs);
 
-            return interaction.editReply('Logs set');
+            return interaction.editReply('Logs channel set');
         }
 
         // ===== JOIN LOGS =====
@@ -172,15 +154,21 @@ client.on('interactionCreate', async interaction => {
                 await user.send(msg);
                 return interaction.editReply('DM sent');
             } catch {
-                return interaction.editReply('User has DMs off');
+                return interaction.editReply('User has DMs disabled');
             }
         }
 
-        // ===== SAY (FIXED PROPERLY) =====
+        // ===== SAY (SAFE + GUARANTEED) =====
         if (name === 'say') {
             const msg = interaction.options.getString('message');
 
-            await interaction.channel.send(msg);
+            const channel = await client.channels.fetch(interaction.channelId).catch(() => null);
+
+            if (!channel || !channel.isTextBased()) {
+                return interaction.editReply('Cannot send messages here');
+            }
+
+            await channel.send(msg);
 
             return interaction.editReply('Sent');
         }
@@ -189,9 +177,7 @@ client.on('interactionCreate', async interaction => {
         console.error(err);
 
         if (interaction.deferred) {
-            interaction.editReply('Error occurred').catch(() => {});
-        } else {
-            interaction.reply({ content: 'Error', ephemeral: true }).catch(() => {});
+            return interaction.editReply('Error occurred');
         }
     }
 });
