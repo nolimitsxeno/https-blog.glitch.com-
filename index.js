@@ -32,13 +32,14 @@ function save(file, data) {
 
 // ================= DATA =================
 let logChannel = load('logchannel.json');
+let joinLogChannel = load('joinlogchannel.json');
 
 // ================= CLIENT =================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMembers, // ✅ FIXED (IMPORTANT)
         GatewayIntentBits.MessageContent
     ],
     partials: [Partials.Message, Partials.Channel]
@@ -49,17 +50,13 @@ client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
     const commands = [
-        new SlashCommandBuilder().setName('logs').setDescription('Set logs channel'),
+        new SlashCommandBuilder().setName('logs').setDescription('Set message logs channel'),
+        new SlashCommandBuilder().setName('logjoins').setDescription('Set join logs channel'),
 
         new SlashCommandBuilder()
             .setName('dm')
             .setDescription('DM a user')
             .addUserOption(o => o.setName('user').setRequired(true))
-            .addStringOption(o => o.setName('message').setRequired(true)),
-
-        new SlashCommandBuilder()
-            .setName('say')
-            .setDescription('Send message in channel')
             .addStringOption(o => o.setName('message').setRequired(true))
     ];
 
@@ -77,7 +74,7 @@ client.once('ready', async () => {
     }
 });
 
-// ================= LOG SYSTEM =================
+// ================= MESSAGE LOGS =================
 client.on('messageDelete', async message => {
     try {
         if (!message.guild) return;
@@ -88,16 +85,10 @@ client.on('messageDelete', async message => {
         const channel = message.guild.channels.cache.get(channelId);
         if (!channel) return;
 
-        const image = message.attachments?.first()?.url;
-
-        channel.send({
-            content:
-`🗑️ **Message Deleted**
-👤 ${message.author?.tag || 'Unknown'}
-💬 ${message.content || '[no text]'}
-${image ? `🖼️ ${image}` : ''}`
-        }).catch(() => {});
-    } catch {}
+        channel.send(`🗑️ Deleted: ${message.content || '[no text]'}`).catch(() => {});
+    } catch (e) {
+        console.error("delete log error:", e);
+    }
 });
 
 client.on('messageUpdate', async (oldMsg, newMsg) => {
@@ -111,14 +102,25 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
         const channel = oldMsg.guild.channels.cache.get(channelId);
         if (!channel) return;
 
-        channel.send({
-            content:
-`✏️ **Message Edited**
-👤 ${oldMsg.author?.tag || 'Unknown'}
-Before: ${oldMsg.content || '[empty]'}
-After: ${newMsg.content || '[empty]'}`
-        }).catch(() => {});
-    } catch {}
+        channel.send(`✏️ Edited:\nBefore: ${oldMsg.content}\nAfter: ${newMsg.content}`).catch(() => {});
+    } catch (e) {
+        console.error("edit log error:", e);
+    }
+});
+
+// ================= JOIN LOGS =================
+client.on('guildMemberAdd', async member => {
+    try {
+        const channelId = joinLogChannel?.[member.guild.id];
+        if (!channelId) return;
+
+        const channel = member.guild.channels.cache.get(channelId);
+        if (!channel) return;
+
+        channel.send(`📥 Joined: ${member.user.tag}`).catch(() => {});
+    } catch (e) {
+        console.error("join log error:", e);
+    }
 });
 
 // ================= COMMANDS =================
@@ -129,55 +131,36 @@ client.on('interactionCreate', async interaction => {
 
     try {
 
-        // ===== /LOGS =====
+        // ===== LOGS =====
         if (commandName === 'logs') {
             logChannel[interaction.guild.id] = interaction.channel.id;
             save('logchannel.json', logChannel);
 
-            return interaction.reply({
-                content: 'Logs channel set successfully',
-                ephemeral: true
-            });
+            return interaction.reply({ content: 'Message logs set', ephemeral: true });
         }
 
-        // ===== /DM =====
+        // ===== LOG JOINS =====
+        if (commandName === 'logjoins') {
+            joinLogChannel[interaction.guild.id] = interaction.channel.id;
+            save('joinlogchannel.json', joinLogChannel);
+
+            return interaction.reply({ content: 'Join logs set', ephemeral: true });
+        }
+
+        // ===== DM (FULLY SAFE FIXED) =====
         if (commandName === 'dm') {
             await interaction.deferReply({ ephemeral: true });
 
+            const user = interaction.options.getUser('user');
+            const msg = interaction.options.getString('message');
+
             try {
-                const user = interaction.options.getUser('user');
-                const msg = interaction.options.getString('message');
-
-                await user.send(msg).catch(() => {
-                    throw new Error('Cannot DM user');
-                });
-
+                await user.send(msg);
                 return interaction.editReply('DM sent');
             } catch {
-                return interaction.editReply('Failed to send DM');
+                return interaction.editReply('User has DMs closed');
             }
         }
-
-        // ===== /SAY =====
-        if (commandName === 'say') {
-            await interaction.deferReply({ ephemeral: true });
-
-            try {
-                const msg = interaction.options.getString('message');
-
-                await interaction.channel.send(msg);
-
-                return interaction.editReply('Message sent');
-            } catch {
-                return interaction.editReply('Failed to send message');
-            }
-        }
-
-        // ===== FALLBACK SAFETY =====
-        return interaction.reply({
-            content: 'Command not handled',
-            ephemeral: true
-        });
 
     } catch (err) {
         console.error(err);
