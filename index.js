@@ -24,6 +24,7 @@ function load(file) {
         return {};
     }
 }
+
 function save(file, data) {
     try {
         fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -41,7 +42,10 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent
     ],
-    partials: [Partials.Message, Partials.Channel]
+    partials: [
+        Partials.Message,
+        Partials.Channel
+    ]
 });
 
 // ================= READY =================
@@ -49,8 +53,17 @@ client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
     const commands = [
-        new SlashCommandBuilder().setName('logs').setDescription('Set message logs channel'),
-        new SlashCommandBuilder().setName('logjoins').setDescription('Set join logs channel'),
+        new SlashCommandBuilder()
+            .setName('logs')
+            .setDescription('Set message logs channel'),
+
+        new SlashCommandBuilder()
+            .setName('logjoins')
+            .setDescription('Set join logs channel'),
+
+        new SlashCommandBuilder()
+            .setName('leaves')
+            .setDescription('Test command (safe handler)'),
 
         new SlashCommandBuilder()
             .setName('dm')
@@ -60,7 +73,7 @@ client.once('ready', async () => {
 
         new SlashCommandBuilder()
             .setName('say')
-            .setDescription('Send message')
+            .setDescription('Send a message in the channel')
             .addStringOption(o => o.setName('message').setRequired(true))
     ];
 
@@ -68,13 +81,16 @@ client.once('ready', async () => {
 
     try {
         await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+            Routes.applicationGuildCommands(
+                process.env.CLIENT_ID,
+                process.env.GUILD_ID
+            ),
             { body: commands }
         );
 
         console.log("Commands registered");
     } catch (err) {
-        console.error("Command register error:", err);
+        console.error("Command registration error:", err);
     }
 });
 
@@ -104,7 +120,11 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
         const channel = await oldMsg.guild.channels.fetch(channelId).catch(() => null);
         if (!channel) return;
 
-        channel.send(`✏️ Edited:\nBefore: ${oldMsg.content}\nAfter: ${newMsg.content}`).catch(() => {});
+        channel.send(
+`✏️ Edited
+Before: ${oldMsg.content || 'none'}
+After: ${newMsg.content || 'none'}`
+        ).catch(() => {});
     } catch {}
 });
 
@@ -127,6 +147,7 @@ client.on('interactionCreate', async interaction => {
     const name = interaction.commandName;
 
     try {
+
         await interaction.deferReply({ ephemeral: true });
 
         // ===== LOGS =====
@@ -145,20 +166,25 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply('Join logs set');
         }
 
+        // ===== LEAVES (TEST COMMAND) =====
+        if (name === 'leaves') {
+            return interaction.editReply('Leaves command works');
+        }
+
         // ===== DM =====
         if (name === 'dm') {
             const user = interaction.options.getUser('user');
             const msg = interaction.options.getString('message');
 
             try {
-                await user.send(msg);
+                await user.send({ content: msg });
                 return interaction.editReply('DM sent');
-            } catch {
-                return interaction.editReply('User has DMs disabled');
+            } catch (err) {
+                return interaction.editReply('DM failed: ' + err.message);
             }
         }
 
-        // ===== SAY (SAFE + GUARANTEED) =====
+        // ===== SAY =====
         if (name === 'say') {
             const msg = interaction.options.getString('message');
 
@@ -168,7 +194,7 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply('Cannot send messages here');
             }
 
-            await channel.send(msg);
+            await channel.send({ content: msg });
 
             return interaction.editReply('Sent');
         }
