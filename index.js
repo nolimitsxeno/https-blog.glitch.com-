@@ -14,7 +14,7 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ================= SAFE STORAGE =================
+// ===== SAFE FILE =====
 function load(file) {
     try {
         if (!fs.existsSync(file)) return {};
@@ -23,29 +23,28 @@ function load(file) {
         return {};
     }
 }
-
 function save(file, data) {
     try {
         fs.writeFileSync(file, JSON.stringify(data, null, 2));
     } catch {}
 }
 
-// ================= DATA =================
-let logChannel = load('logchannel.json');
-let joinLogChannel = load('joinlogchannel.json');
+// ===== DATA =====
+let logs = load('logs.json');
+let joinLogs = load('joinlogs.json');
 
-// ================= CLIENT =================
+// ===== CLIENT =====
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers, // ✅ FIXED (IMPORTANT)
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent
     ],
     partials: [Partials.Message, Partials.Channel]
 });
 
-// ================= READY =================
+// ===== READY =====
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
@@ -57,98 +56,106 @@ client.once('ready', async () => {
             .setName('dm')
             .setDescription('DM a user')
             .addUserOption(o => o.setName('user').setRequired(true))
+            .addStringOption(o => o.setName('message').setRequired(true)),
+
+        new SlashCommandBuilder()
+            .setName('say')
+            .setDescription('Send message')
             .addStringOption(o => o.setName('message').setRequired(true))
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-    try {
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-            { body: commands }
-        );
+    await rest.put(
+        Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+        { body: commands }
+    );
 
-        console.log("Slash commands registered");
-    } catch (err) {
-        console.error("Slash register error:", err);
-    }
+    console.log("Commands registered");
 });
 
-// ================= MESSAGE LOGS =================
-client.on('messageDelete', async message => {
+// ===== LOG DELETE =====
+client.on('messageDelete', async msg => {
     try {
-        if (!message.guild) return;
+        if (!msg.guild) return;
 
-        const channelId = logChannel?.[message.guild.id];
+        const channelId = logs[msg.guild.id];
         if (!channelId) return;
 
-        const channel = message.guild.channels.cache.get(channelId);
+        const channel = msg.guild.channels.cache.get(channelId);
         if (!channel) return;
 
-        channel.send(`🗑️ Deleted: ${message.content || '[no text]'}`).catch(() => {});
-    } catch (e) {
-        console.error("delete log error:", e);
-    }
+        const image = msg.attachments?.first()?.url;
+
+        channel.send(
+`🗑️ Deleted
+User: ${msg.author?.tag}
+Message: ${msg.content || 'none'}
+${image ? `Image: ${image}` : ''}`
+        ).catch(() => {});
+    } catch {}
 });
 
+// ===== LOG EDIT =====
 client.on('messageUpdate', async (oldMsg, newMsg) => {
     try {
         if (!oldMsg.guild) return;
         if (oldMsg.content === newMsg.content) return;
 
-        const channelId = logChannel?.[oldMsg.guild.id];
+        const channelId = logs[oldMsg.guild.id];
         if (!channelId) return;
 
         const channel = oldMsg.guild.channels.cache.get(channelId);
         if (!channel) return;
 
-        channel.send(`✏️ Edited:\nBefore: ${oldMsg.content}\nAfter: ${newMsg.content}`).catch(() => {});
-    } catch (e) {
-        console.error("edit log error:", e);
-    }
+        channel.send(
+`✏️ Edited
+User: ${oldMsg.author?.tag}
+Before: ${oldMsg.content || 'none'}
+After: ${newMsg.content || 'none'}`
+        ).catch(() => {});
+    } catch {}
 });
 
-// ================= JOIN LOGS =================
-client.on('guildMemberAdd', async member => {
+// ===== JOIN LOG =====
+client.on('guildMemberAdd', member => {
     try {
-        const channelId = joinLogChannel?.[member.guild.id];
+        const channelId = joinLogs[member.guild.id];
         if (!channelId) return;
 
         const channel = member.guild.channels.cache.get(channelId);
         if (!channel) return;
 
         channel.send(`📥 Joined: ${member.user.tag}`).catch(() => {});
-    } catch (e) {
-        console.error("join log error:", e);
-    }
+    } catch {}
 });
 
-// ================= COMMANDS =================
+// ===== COMMANDS =====
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName } = interaction;
+    const name = interaction.commandName;
 
     try {
 
-        // ===== LOGS =====
-        if (commandName === 'logs') {
-            logChannel[interaction.guild.id] = interaction.channel.id;
-            save('logchannel.json', logChannel);
+        // logs
+        if (name === 'logs') {
+            logs[interaction.guild.id] = interaction.channel.id;
+            save('logs.json', logs);
 
-            return interaction.reply({ content: 'Message logs set', ephemeral: true });
+            return interaction.reply({ content: 'Logs set', ephemeral: true });
         }
 
-        // ===== LOG JOINS =====
-        if (commandName === 'logjoins') {
-            joinLogChannel[interaction.guild.id] = interaction.channel.id;
-            save('joinlogchannel.json', joinLogChannel);
+        // join logs
+        if (name === 'logjoins') {
+            joinLogs[interaction.guild.id] = interaction.channel.id;
+            save('joinlogs.json', joinLogs);
 
             return interaction.reply({ content: 'Join logs set', ephemeral: true });
         }
 
-        // ===== DM (FULLY SAFE FIXED) =====
-        if (commandName === 'dm') {
+        // dm
+        if (name === 'dm') {
             await interaction.deferReply({ ephemeral: true });
 
             const user = interaction.options.getUser('user');
@@ -158,21 +165,26 @@ client.on('interactionCreate', async interaction => {
                 await user.send(msg);
                 return interaction.editReply('DM sent');
             } catch {
-                return interaction.editReply('User has DMs closed');
+                return interaction.editReply('User has DMs off');
             }
+        }
+
+        // say
+        if (name === 'say') {
+            const msg = interaction.options.getString('message');
+
+            await interaction.reply({ content: 'Sending...', ephemeral: true });
+            await interaction.channel.send(msg);
         }
 
     } catch (err) {
         console.error(err);
 
         if (!interaction.replied) {
-            return interaction.reply({
-                content: 'Bot error occurred',
-                ephemeral: true
-            }).catch(() => {});
+            interaction.reply({ content: 'Error', ephemeral: true }).catch(() => {});
         }
     }
 });
 
-// ================= LOGIN =================
+// ===== LOGIN =====
 client.login(process.env.TOKEN);
