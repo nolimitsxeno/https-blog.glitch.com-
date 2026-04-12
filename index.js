@@ -8,11 +8,6 @@ const {
 } = require('discord.js');
 
 const fs = require('fs');
-const express = require('express');
-
-const app = express();
-app.get('/', (req, res) => res.send('Bot is alive'));
-app.listen(process.env.PORT || 5000);
 
 // ===== SAFE FILE =====
 function load(file) {
@@ -41,7 +36,11 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent
     ],
-    partials: [Partials.Message, Partials.Channel]
+    partials: [
+        Partials.Message,
+        Partials.Channel,
+        Partials.Reaction
+    ]
 });
 
 // ===== READY =====
@@ -66,17 +65,22 @@ client.once('ready', async () => {
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-    await rest.put(
-        Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-        { body: commands }
-    );
+    try {
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+            { body: commands }
+        );
 
-    console.log("Commands registered");
+        console.log("Commands registered");
+    } catch (e) {
+        console.error(e);
+    }
 });
 
-// ===== LOG DELETE =====
+// ===== DELETE LOG =====
 client.on('messageDelete', async msg => {
     try {
+        if (msg.partial) await msg.fetch().catch(() => {});
         if (!msg.guild) return;
 
         const channelId = logs[msg.guild.id];
@@ -89,16 +93,17 @@ client.on('messageDelete', async msg => {
 
         channel.send(
 `🗑️ Deleted
-User: ${msg.author?.tag}
+User: ${msg.author?.tag || 'unknown'}
 Message: ${msg.content || 'none'}
 ${image ? `Image: ${image}` : ''}`
         ).catch(() => {});
     } catch {}
 });
 
-// ===== LOG EDIT =====
+// ===== EDIT LOG =====
 client.on('messageUpdate', async (oldMsg, newMsg) => {
     try {
+        if (oldMsg.partial) await oldMsg.fetch().catch(() => {});
         if (!oldMsg.guild) return;
         if (oldMsg.content === newMsg.content) return;
 
@@ -110,7 +115,7 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
 
         channel.send(
 `✏️ Edited
-User: ${oldMsg.author?.tag}
+User: ${oldMsg.author?.tag || 'unknown'}
 Before: ${oldMsg.content || 'none'}
 After: ${newMsg.content || 'none'}`
         ).catch(() => {});
@@ -173,8 +178,9 @@ client.on('interactionCreate', async interaction => {
         if (name === 'say') {
             const msg = interaction.options.getString('message');
 
-            await interaction.reply({ content: 'Sending...', ephemeral: true });
-            await interaction.channel.send(msg);
+            return interaction.reply({
+                content: msg
+            });
         }
 
     } catch (err) {
