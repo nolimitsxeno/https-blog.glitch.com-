@@ -14,7 +14,7 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ===== SAFE FILE =====
+// ================= SAFE STORAGE =================
 function load(file) {
     try {
         if (!fs.existsSync(file)) return {};
@@ -29,11 +29,11 @@ function save(file, data) {
     } catch {}
 }
 
-// ===== DATA =====
+// ================= DATA =================
 let logs = load('logs.json');
 let joinLogs = load('joinlogs.json');
 
-// ===== CLIENT =====
+// ================= CLIENT =================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -41,14 +41,10 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent
     ],
-    partials: [
-        Partials.Message,
-        Partials.Channel,
-        Partials.Reaction
-    ]
+    partials: [Partials.Message, Partials.Channel]
 });
 
-// ===== READY =====
+// ================= READY =================
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
@@ -70,28 +66,23 @@ client.once('ready', async () => {
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-    try {
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-            { body: commands }
-        );
+    await rest.put(
+        Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+        { body: commands }
+    );
 
-        console.log("Commands registered");
-    } catch (e) {
-        console.error(e);
-    }
+    console.log("Commands registered");
 });
 
-// ===== DELETE LOG =====
+// ================= LOG DELETE =================
 client.on('messageDelete', async msg => {
     try {
-        if (msg.partial) await msg.fetch().catch(() => {});
         if (!msg.guild) return;
 
         const channelId = logs[msg.guild.id];
         if (!channelId) return;
 
-        const channel = msg.guild.channels.cache.get(channelId);
+        const channel = await msg.guild.channels.fetch(channelId).catch(() => null);
         if (!channel) return;
 
         const image = msg.attachments?.first()?.url;
@@ -102,20 +93,21 @@ User: ${msg.author?.tag || 'unknown'}
 Message: ${msg.content || 'none'}
 ${image ? `Image: ${image}` : ''}`
         ).catch(() => {});
-    } catch {}
+    } catch (e) {
+        console.error("delete log error", e);
+    }
 });
 
-// ===== EDIT LOG =====
+// ================= LOG EDIT =================
 client.on('messageUpdate', async (oldMsg, newMsg) => {
     try {
-        if (oldMsg.partial) await oldMsg.fetch().catch(() => {});
         if (!oldMsg.guild) return;
         if (oldMsg.content === newMsg.content) return;
 
         const channelId = logs[oldMsg.guild.id];
         if (!channelId) return;
 
-        const channel = oldMsg.guild.channels.cache.get(channelId);
+        const channel = await oldMsg.guild.channels.fetch(channelId).catch(() => null);
         if (!channel) return;
 
         channel.send(
@@ -124,30 +116,35 @@ User: ${oldMsg.author?.tag || 'unknown'}
 Before: ${oldMsg.content || 'none'}
 After: ${newMsg.content || 'none'}`
         ).catch(() => {});
-    } catch {}
+    } catch (e) {
+        console.error("edit log error", e);
+    }
 });
 
-// ===== JOIN LOG =====
-client.on('guildMemberAdd', member => {
+// ================= JOIN LOG =================
+client.on('guildMemberAdd', async member => {
     try {
         const channelId = joinLogs[member.guild.id];
         if (!channelId) return;
 
-        const channel = member.guild.channels.cache.get(channelId);
+        const channel = await member.guild.channels.fetch(channelId).catch(() => null);
         if (!channel) return;
 
         channel.send(`📥 Joined: ${member.user.tag}`).catch(() => {});
-    } catch {}
+    } catch (e) {
+        console.error("join log error", e);
+    }
 });
 
-// ===== COMMANDS =====
+// ================= COMMANDS =================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const name = interaction.commandName;
 
     try {
-        // 🔥 ALWAYS ACKNOWLEDGE FIRST (fixes your issue)
+
+        // always acknowledge immediately
         await interaction.deferReply({ ephemeral: true });
 
         // ===== LOGS =====
@@ -179,15 +176,14 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // ===== SAY =====
+        // ===== SAY (FIXED PROPERLY) =====
         if (name === 'say') {
             const msg = interaction.options.getString('message');
 
             await interaction.channel.send(msg);
+
             return interaction.editReply('Sent');
         }
-
-        return interaction.editReply('Unknown command');
 
     } catch (err) {
         console.error(err);
@@ -200,5 +196,5 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// ===== LOGIN =====
+// ================= LOGIN =================
 client.login(process.env.TOKEN);
