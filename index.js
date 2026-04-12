@@ -8,6 +8,11 @@ const {
 } = require('discord.js');
 
 const fs = require('fs');
+const express = require('express');
+
+const app = express();
+app.get('/', (req, res) => res.send('Bot is alive'));
+app.listen(process.env.PORT || 5000);
 
 // ===== SAFE FILE =====
 function load(file) {
@@ -142,27 +147,27 @@ client.on('interactionCreate', async interaction => {
     const name = interaction.commandName;
 
     try {
+        // 🔥 ALWAYS ACKNOWLEDGE FIRST (fixes your issue)
+        await interaction.deferReply({ ephemeral: true });
 
-        // logs
+        // ===== LOGS =====
         if (name === 'logs') {
             logs[interaction.guild.id] = interaction.channel.id;
             save('logs.json', logs);
 
-            return interaction.reply({ content: 'Logs set', ephemeral: true });
+            return interaction.editReply('Logs set');
         }
 
-        // join logs
+        // ===== JOIN LOGS =====
         if (name === 'logjoins') {
             joinLogs[interaction.guild.id] = interaction.channel.id;
             save('joinlogs.json', joinLogs);
 
-            return interaction.reply({ content: 'Join logs set', ephemeral: true });
+            return interaction.editReply('Join logs set');
         }
 
-        // dm
+        // ===== DM =====
         if (name === 'dm') {
-            await interaction.deferReply({ ephemeral: true });
-
             const user = interaction.options.getUser('user');
             const msg = interaction.options.getString('message');
 
@@ -174,19 +179,22 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // say
+        // ===== SAY =====
         if (name === 'say') {
             const msg = interaction.options.getString('message');
 
-            return interaction.reply({
-                content: msg
-            });
+            await interaction.channel.send(msg);
+            return interaction.editReply('Sent');
         }
+
+        return interaction.editReply('Unknown command');
 
     } catch (err) {
         console.error(err);
 
-        if (!interaction.replied) {
+        if (interaction.deferred) {
+            interaction.editReply('Error occurred').catch(() => {});
+        } else {
             interaction.reply({ content: 'Error', ephemeral: true }).catch(() => {});
         }
     }
