@@ -14,28 +14,23 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive'));
 app.listen(process.env.PORT || 5000);
 
-// ================= SAFE FILE SYSTEM =================
+// ================= SAFE STORAGE =================
 function load(file) {
     try {
         if (!fs.existsSync(file)) return {};
         return JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch (e) {
-        console.error(`Load error ${file}:`, e);
+    } catch {
         return {};
     }
 }
 
 function save(file, data) {
     try {
-        fs.writeFileSync(file, JSON.stringify(data, null, 2));
-    } catch (e) {
-        console.error(`Save error ${file}:`, e);
-    }
+        fs.writeFileSync(file, JSON.stringify(data));
+    } catch {}
 }
 
 // ================= DATA =================
-let forceRoles = load('forceroles.json');
-let vcStay = load('vcstay.json');
 let logChannel = load('logchannel.json');
 
 // ================= CLIENT =================
@@ -44,8 +39,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates
+        GatewayIntentBits.MessageContent
     ],
     partials: [Partials.Message, Partials.Channel]
 });
@@ -55,9 +49,6 @@ client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
     const commands = [
-        new SlashCommandBuilder().setName('stayvc').setDescription('Join VC'),
-        new SlashCommandBuilder().setName('unstayvc').setDescription('Leave VC'),
-
         new SlashCommandBuilder().setName('setlogs').setDescription('Set logs channel'),
 
         new SlashCommandBuilder()
@@ -69,23 +60,7 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('say')
             .setDescription('Send message')
-            .addStringOption(o => o.setName('message').setRequired(true)),
-
-        new SlashCommandBuilder()
-            .setName('activity')
-            .setDescription('Set activity')
-            .addStringOption(o => o.setName('type').setRequired(true))
-            .addStringOption(o => o.setName('text').setRequired(true)),
-
-        new SlashCommandBuilder()
-            .setName('dstatus')
-            .setDescription('Set Discord status')
-            .addStringOption(o => o.setName('state').setRequired(true)),
-
-        new SlashCommandBuilder()
-            .setName('setstatus')
-            .setDescription('Set custom status')
-            .addStringOption(o => o.setName('text').setRequired(true))
+            .addStringOption(o => o.setName('message').setRequired(true))
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -98,7 +73,7 @@ client.once('ready', async () => {
 
         console.log("Slash commands registered");
     } catch (err) {
-        console.error("Slash register error:", err);
+        console.error(err);
     }
 });
 
@@ -113,18 +88,8 @@ client.on('messageDelete', async message => {
         const channel = message.guild.channels.cache.get(channelId);
         if (!channel) return;
 
-        const image = message.attachments?.first()?.url;
-
-        channel.send({
-            content:
-`🗑️ Deleted Message
-👤 ${message.author?.tag || 'Unknown'}
-💬 ${message.content || '[no text]'}
-${image ? `🖼️ ${image}` : ''}`
-        }).catch(() => {});
-    } catch (e) {
-        console.error("delete log error:", e);
-    }
+        channel.send(`🗑️ Deleted: ${message.content || '[no text]'}`).catch(() => {});
+    } catch {}
 });
 
 client.on('messageUpdate', async (oldMsg, newMsg) => {
@@ -138,16 +103,8 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
         const channel = oldMsg.guild.channels.cache.get(channelId);
         if (!channel) return;
 
-        channel.send({
-            content:
-`✏️ Edited Message
-👤 ${oldMsg.author?.tag || 'Unknown'}
-Before: ${oldMsg.content || '[empty]'}
-After: ${newMsg.content || '[empty]'}`
-        }).catch(() => {});
-    } catch (e) {
-        console.error("edit log error:", e);
-    }
+        channel.send(`✏️ Edited:\nBefore: ${oldMsg.content}\nAfter: ${newMsg.content}`).catch(() => {});
+    } catch {}
 });
 
 // ================= COMMANDS =================
@@ -160,129 +117,48 @@ client.on('interactionCreate', async interaction => {
 
         // ===== SET LOGS =====
         if (commandName === 'setlogs') {
-            try {
-                if (!interaction.guild) {
-                    return interaction.reply({ content: 'Guild only', ephemeral: true });
-                }
+            logChannel[interaction.guild.id] = interaction.channel.id;
+            save('logchannel.json', logChannel);
 
-                logChannel[interaction.guild.id] = interaction.channel.id;
-                save('logchannel.json', logChannel);
-
-                return interaction.reply({ content: 'Logs set', ephemeral: true });
-
-            } catch (e) {
-                console.error(e);
-                return interaction.reply({ content: 'Failed logs', ephemeral: true }).catch(() => {});
-            }
+            return interaction.reply({
+                content: 'Logs channel set',
+                ephemeral: true
+            });
         }
 
         // ===== DM =====
         if (commandName === 'dm') {
-            await interaction.deferReply({ ephemeral: true });
+            const user = interaction.options.getUser('user');
+            const msg = interaction.options.getString('message');
 
             try {
-                const user = interaction.options.getUser('user');
-                const msg = interaction.options.getString('message');
-
-                await user.send(msg).catch(() => {
-                    throw new Error('Cannot DM user');
-                });
-
-                return interaction.editReply('DM sent');
-
-            } catch (e) {
-                console.error(e);
-                return interaction.editReply('DM failed');
+                await user.send(msg);
+                return interaction.reply({ content: 'DM sent', ephemeral: true });
+            } catch {
+                return interaction.reply({ content: 'Cannot DM user', ephemeral: true });
             }
         }
 
         // ===== SAY =====
         if (commandName === 'say') {
-            await interaction.deferReply({ ephemeral: true });
+            const msg = interaction.options.getString('message');
 
-            try {
-                const msg = interaction.options.getString('message');
+            await interaction.channel.send(msg);
 
-                await interaction.channel.send(msg);
-
-                return interaction.editReply('Sent');
-
-            } catch (e) {
-                console.error(e);
-                return interaction.editReply('Say failed');
-            }
-        }
-
-        // ===== VC =====
-        if (commandName === 'stayvc') {
-            const { joinVoiceChannel } = require('@discordjs/voice');
-
-            const channel = interaction.member.voice.channel;
-            if (!channel)
-                return interaction.reply({ content: 'Join VC first', ephemeral: true });
-
-            vcStay[interaction.guild.id] = channel.id;
-            save('vcstay.json', vcStay);
-
-            joinVoiceChannel({
-                channelId: channel.id,
-                guildId: interaction.guild.id,
-                adapterCreator: interaction.guild.voiceAdapterCreator
+            return interaction.reply({
+                content: 'Sent',
+                ephemeral: true
             });
-
-            return interaction.reply({ content: 'Joined VC', ephemeral: true });
         }
 
-        if (commandName === 'unstayvc') {
-            delete vcStay[interaction.guild.id];
-            save('vcstay.json', vcStay);
-
-            return interaction.reply({ content: 'Left VC', ephemeral: true });
-        }
-
-        // ===== STATUS =====
-        if (commandName === 'dstatus') {
-            client.user.setPresence({
-                status: interaction.options.getString('state')
-            });
-
-            return interaction.reply({ content: 'Status set', ephemeral: true });
-        }
-
-        // ===== ACTIVITY =====
-        if (commandName === 'activity') {
-            const type = interaction.options.getString('type');
-            const text = interaction.options.getString('text');
-
-            const map = {
-                PLAYING: 0,
-                WATCHING: 3,
-                LISTENING: 2,
-                COMPETING: 5
-            };
-
-            client.user.setPresence({
-                activities: [{ name: text, type: map[type.toUpperCase()] ?? 0 }],
-                status: 'online'
-            });
-
-            return interaction.reply({ content: 'Activity set', ephemeral: true });
-        }
-
-        // ===== CUSTOM STATUS =====
-        if (commandName === 'setstatus') {
-            const text = interaction.options.getString('text');
-
-            client.user.setPresence({
-                activities: [{ name: text, type: 4 }],
-                status: 'online'
-            });
-
-            return interaction.reply({ content: 'Status set', ephemeral: true });
-        }
+        // ===== FALLBACK SAFETY =====
+        return interaction.reply({
+            content: 'Command received but not handled.',
+            ephemeral: true
+        });
 
     } catch (err) {
-        console.error("Interaction error:", err);
+        console.error(err);
 
         if (!interaction.replied) {
             return interaction.reply({
