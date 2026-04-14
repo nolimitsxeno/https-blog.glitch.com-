@@ -31,8 +31,13 @@ client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   client.user.setPresence({
-    activities: [{ name: 'Starting...', type: ActivityType.Playing }],
-    status: 'online'
+    status: 'online',
+    activities: [
+      {
+        name: 'Starting up...',
+        type: ActivityType.Playing
+      }
+    ]
   });
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -49,22 +54,14 @@ client.once('clientReady', async () => {
       { name: 'joinvc', description: 'Join VC' },
       { name: 'leavevc', description: 'Leave VC' },
 
-      // ORIGINAL STATUS
-      { name: 'status', description: 'Change bot status', options: [
+      { name: 'dstatus', description: 'Set bot status', options: [
         { name: 'state', type: 3, required: true }
       ]},
 
-      { name: 'activity', description: 'Change bot activity', options: [
+      { name: 'activity', description: 'Set bot activity', options: [
         { name: 'type', type: 3, required: true },
         { name: 'text', type: 3, required: true }
-      ]},
-
-      // ✅ FIX ADDED COMMANDS
-      { name: 'dstatus', description: 'Change bot status (alt)', options: [
-        { name: 'state', type: 3, required: true }
-      ]},
-
-      { name: 'stayvc', description: 'Join VC and stay' }
+      ]}
     ]
   });
 
@@ -95,13 +92,10 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Sent');
     }
 
-    // ===== JOIN VC =====
-    if (commandName === 'joinvc' || commandName === 'stayvc') {
+    // ================= VC =================
+    if (commandName === 'joinvc') {
       const channel = interaction.member.voice.channel;
-
-      if (!channel) {
-        return interaction.editReply('Join a VC first');
-      }
+      if (!channel) return interaction.editReply('Join a VC first');
 
       joinVoiceChannel({
         channelId: channel.id,
@@ -112,50 +106,57 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Joined VC');
     }
 
-    // ===== LEAVE VC =====
     if (commandName === 'leavevc') {
       const connection = getVoiceConnection(interaction.guild.id);
-
-      if (!connection) {
-        return interaction.editReply('Not in VC');
-      }
+      if (!connection) return interaction.editReply('Not in VC');
 
       connection.destroy();
       return interaction.editReply('Left VC');
     }
 
-    // ===== STATUS =====
-    if (commandName === 'status' || commandName === 'dstatus') {
-      const state = options.getString('state');
+    // ================= STATUS FIX =================
+    if (commandName === 'dstatus') {
+      const state = options.getString('state').toLowerCase();
 
+      // IMPORTANT FIX: fully replace presence (no partial overwrite bugs)
       client.user.setPresence({
-        status: state.toLowerCase(),
-        activities: client.user.presence?.activities || []
+        status: state,
+        activities: client.user.presence?.activities?.length
+          ? client.user.presence.activities
+          : []
       });
 
       return interaction.editReply(`Status set to ${state}`);
     }
 
-    // ===== ACTIVITY =====
+    // ================= CLEAN ACTIVITY FIX =================
     if (commandName === 'activity') {
-      const type = options.getString('type');
+      const type = options.getString('type').toLowerCase();
       const text = options.getString('text');
 
       const map = {
         playing: ActivityType.Playing,
+        watch: ActivityType.Watching,
         watching: ActivityType.Watching,
-        listening: ActivityType.Listening
+        listen: ActivityType.Listening,
+        listening: ActivityType.Listening,
+        streaming: ActivityType.Streaming
       };
+
+      const activityType = map[type] || ActivityType.Playing;
 
       client.user.setPresence({
         status: client.user.presence?.status || 'online',
-        activities: [{
-          name: text,
-          type: map[type.toLowerCase()] || ActivityType.Playing
-        }]
+        activities: [
+          {
+            name: text,
+            type: activityType,
+            url: activityType === ActivityType.Streaming ? "https://twitch.tv/discord" : undefined
+          }
+        ]
       });
 
-      return interaction.editReply('Activity updated');
+      return interaction.editReply(`Activity set to ${type}: ${text}`);
     }
 
   } catch (err) {
