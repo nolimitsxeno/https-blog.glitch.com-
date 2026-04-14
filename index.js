@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, Partials, EmbedBuilder, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, Partials, ActivityType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const fs = require('fs');
 const express = require('express');
@@ -7,7 +7,7 @@ const express = require('express');
 process.on('unhandledRejection', console.error);
 process.on('uncaughtException', console.error);
 
-// ================= EXPRESS (RENDER KEEP ALIVE) =================
+// ================= EXPRESS =================
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -25,17 +25,6 @@ const client = new Client({
   ],
   partials: [Partials.Message, Partials.Channel]
 });
-
-// ================= FILE STORAGE =================
-let boostLogChannels = fs.existsSync('boostlog.json') ? JSON.parse(fs.readFileSync('boostlog.json')) : {};
-let joinLogChannels = fs.existsSync('joinlog.json') ? JSON.parse(fs.readFileSync('joinlog.json')) : {};
-let leaveLogChannels = fs.existsSync('leavelog.json') ? JSON.parse(fs.readFileSync('leavelog.json')) : {};
-let autoroles = fs.existsSync('autorole.json') ? JSON.parse(fs.readFileSync('autorole.json')) : {};
-let activeChannels = fs.existsSync('activechannels.json') ? JSON.parse(fs.readFileSync('activechannels.json')) : {};
-
-function save(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
 
 // ================= READY =================
 client.once('clientReady', async () => {
@@ -60,6 +49,7 @@ client.once('clientReady', async () => {
       { name: 'joinvc', description: 'Join VC' },
       { name: 'leavevc', description: 'Leave VC' },
 
+      // ORIGINAL STATUS
       { name: 'status', description: 'Change bot status', options: [
         { name: 'state', type: 3, required: true }
       ]},
@@ -69,25 +59,12 @@ client.once('clientReady', async () => {
         { name: 'text', type: 3, required: true }
       ]},
 
-      { name: 'logjoins', description: 'Set join log channel', options: [
-        { name: 'channel', type: 7, required: true }
+      // ✅ FIX ADDED COMMANDS
+      { name: 'dstatus', description: 'Change bot status (alt)', options: [
+        { name: 'state', type: 3, required: true }
       ]},
 
-      { name: 'logleaves', description: 'Set leave log channel', options: [
-        { name: 'channel', type: 7, required: true }
-      ]},
-
-      { name: 'logboosts', description: 'Set boost log channel', options: [
-        { name: 'channel', type: 7, required: true }
-      ]},
-
-      { name: 'active', description: 'Set active channel', options: [
-        { name: 'channel', type: 7, required: true }
-      ]},
-
-      { name: 'autorole', description: 'Set auto role', options: [
-        { name: 'role', type: 8, required: true }
-      ]}
+      { name: 'stayvc', description: 'Join VC and stay' }
     ]
   });
 
@@ -101,12 +78,16 @@ client.on('interactionCreate', async interaction => {
   try {
     await interaction.deferReply().catch(() => {});
 
-    const { commandName, options, guild } = interaction;
+    const { commandName, options } = interaction;
 
     // ===== BASIC =====
-    if (commandName === 'say') return interaction.editReply(options.getString('text'));
+    if (commandName === 'say') {
+      return interaction.editReply(options.getString('text'));
+    }
 
-    if (commandName === 'invite') return interaction.editReply('Invite link here');
+    if (commandName === 'invite') {
+      return interaction.editReply('Invite link here');
+    }
 
     if (commandName === 'dm') {
       const user = options.getUser('user');
@@ -114,10 +95,13 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Sent');
     }
 
-    // ===== VC =====
-    if (commandName === 'joinvc') {
+    // ===== JOIN VC =====
+    if (commandName === 'joinvc' || commandName === 'stayvc') {
       const channel = interaction.member.voice.channel;
-      if (!channel) return interaction.editReply('Join a VC first');
+
+      if (!channel) {
+        return interaction.editReply('Join a VC first');
+      }
 
       joinVoiceChannel({
         channelId: channel.id,
@@ -128,16 +112,20 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Joined VC');
     }
 
+    // ===== LEAVE VC =====
     if (commandName === 'leavevc') {
       const connection = getVoiceConnection(interaction.guild.id);
-      if (!connection) return interaction.editReply('Not in VC');
+
+      if (!connection) {
+        return interaction.editReply('Not in VC');
+      }
 
       connection.destroy();
       return interaction.editReply('Left VC');
     }
 
     // ===== STATUS =====
-    if (commandName === 'status') {
+    if (commandName === 'status' || commandName === 'dstatus') {
       const state = options.getString('state');
 
       client.user.setPresence({
@@ -170,99 +158,9 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Activity updated');
     }
 
-    // ===== LOGS =====
-    if (commandName === 'logjoins') {
-      const ch = options.getChannel('channel');
-      joinLogChannels[guild.id] = ch.id;
-      save('joinlog.json', joinLogChannels);
-      return interaction.editReply('Join log set');
-    }
-
-    if (commandName === 'logleaves') {
-      const ch = options.getChannel('channel');
-      leaveLogChannels[guild.id] = ch.id;
-      save('leavelog.json', leaveLogChannels);
-      return interaction.editReply('Leave log set');
-    }
-
-    if (commandName === 'logboosts') {
-      const ch = options.getChannel('channel');
-      boostLogChannels[guild.id] = ch.id;
-      save('boostlog.json', boostLogChannels);
-      return interaction.editReply('Boost log set');
-    }
-
-    if (commandName === 'active') {
-      const ch = options.getChannel('channel');
-      activeChannels[guild.id] = ch.id;
-      save('activechannels.json', activeChannels);
-      return interaction.editReply('Active channel set');
-    }
-
-    if (commandName === 'autorole') {
-      const role = options.getRole('role');
-      autoroles[guild.id] = role.id;
-      save('autorole.json', autoroles);
-      return interaction.editReply('Autorole set');
-    }
-
   } catch (err) {
     console.error(err);
     try { await interaction.editReply('Error'); } catch {}
-  }
-});
-
-// ================= PREFIX COMMANDS =================
-client.on('messageCreate', async (message) => {
-  try {
-    if (!message.guild || message.author.bot) return;
-    if (!message.content.startsWith(',')) return;
-
-    const args = message.content.slice(1).trim().split(/ +/);
-    const cmd = args.shift().toLowerCase();
-
-    if (cmd === 'ping') return message.reply(`Pong! ${client.ws.ping}ms`);
-    if (cmd === 'say') return message.channel.send(args.join(' '));
-
-    if (cmd === 'kick') {
-      const user = message.mentions.members.first();
-      if (!user) return;
-      await user.kick(args.slice(1).join(' ') || 'No reason');
-    }
-
-    if (cmd === 'ban') {
-      const user = message.mentions.members.first();
-      if (!user) return;
-      await user.ban({ reason: args.slice(1).join(' ') || 'No reason' });
-    }
-
-    if (cmd === 'unban') {
-      await message.guild.members.unban(args[0]);
-    }
-
-  } catch (err) {
-    console.error("PREFIX ERROR:", err);
-  }
-});
-
-// ================= EVENTS =================
-client.on('guildMemberAdd', member => {
-  const role = autoroles[member.guild.id];
-  if (role) member.roles.add(role).catch(() => {});
-
-  const ch = joinLogChannels[member.guild.id];
-  if (ch) member.guild.channels.cache.get(ch)?.send(`${member.user.tag} joined`);
-});
-
-client.on('guildMemberRemove', member => {
-  const ch = leaveLogChannels[member.guild.id];
-  if (ch) member.guild.channels.cache.get(ch)?.send(`${member.user.tag} left`);
-});
-
-client.on('guildMemberUpdate', (oldM, newM) => {
-  if (!oldM.premiumSince && newM.premiumSince) {
-    const ch = boostLogChannels[newM.guild.id];
-    if (ch) newM.guild.channels.cache.get(ch)?.send(`${newM.user.tag} boosted 🚀`);
   }
 });
 
