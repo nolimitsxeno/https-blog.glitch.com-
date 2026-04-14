@@ -1,7 +1,6 @@
 const { Client, GatewayIntentBits, REST, Routes, Partials, ActivityType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require('express');
-const fs = require('fs');
 
 // ================= SAFETY =================
 process.on('unhandledRejection', console.error);
@@ -19,10 +18,9 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildVoiceStates
   ],
-  partials: [Partials.Message, Partials.Channel]
+  partials: [Partials.Channel]
 });
 
 // ================= STORAGE =================
@@ -77,10 +75,10 @@ client.once('ready', async () => {
     ]
   });
 
-  console.log("Slash commands loaded");
+  console.log("Slash commands registered");
 });
 
-// ================= TIMER FUNCTION =================
+// ================= TIMER (SAFE - DOES NOT BREAK COMMANDS) =================
 function startTimer() {
   if (activityTimer) clearInterval(activityTimer);
 
@@ -95,15 +93,10 @@ function startTimer() {
     const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
     const s = String(seconds % 60).padStart(2, '0');
 
-    client.user.setPresence({
-      status: client.user.presence?.status || 'online',
-      activities: [
-        {
-          name: `${activityText} | ${h}:${m}:${s}`,
-          type: activityType
-        }
-      ]
-    });
+    client.user.setActivity(
+      `${activityText} | ${h}:${m}:${s}`,
+      { type: activityType }
+    );
   }, 5000);
 }
 
@@ -111,18 +104,26 @@ function startTimer() {
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
+  const commandName = interaction.commandName;
+
+  // 🔥 ALIASES FIX
+  const cmd = {
+    logs: 'logjoins',
+    stayvc: 'joinvc'
+  }[commandName] || commandName;
+
   try {
-    if (!interaction.deferred) await interaction.deferReply();
-
-    const { commandName, options } = interaction;
-
-    // ===== SAY =====
-    if (commandName === 'say') {
-      return interaction.editReply(options.getString('text'));
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply().catch(() => {});
     }
 
-    // ===== VC JOIN =====
-    if (commandName === 'joinvc') {
+    // ================= SAY =================
+    if (cmd === 'say') {
+      return interaction.editReply(interaction.options.getString('text'));
+    }
+
+    // ================= VC JOIN =================
+    if (cmd === 'joinvc') {
       const channel = interaction.member.voice.channel;
       if (!channel) return interaction.editReply('Join a VC first');
 
@@ -135,8 +136,8 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Joined VC');
     }
 
-    // ===== VC LEAVE =====
-    if (commandName === 'leavevc') {
+    // ================= VC LEAVE =================
+    if (cmd === 'leavevc') {
       const conn = getVoiceConnection(interaction.guild.id);
       if (!conn) return interaction.editReply('Not in VC');
 
@@ -144,33 +145,28 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Left VC');
     }
 
-    // ===== STATUS FIX (IMPORTANT) =====
-    if (commandName === 'dstatus') {
-      const state = options.getString('state').toLowerCase();
+    // ================= STATUS FIX (THIS IS THE IMPORTANT ONE) =================
+    if (cmd === 'dstatus') {
+      const state = interaction.options.getString('state').toLowerCase();
 
       const allowed = ['online', 'idle', 'dnd', 'invisible'];
       if (!allowed.includes(state)) {
         return interaction.editReply('Use: online / idle / dnd / invisible');
       }
 
-      // FULL REBUILD (fixes Discord ignoring updates)
+      // FORCE FULL UPDATE (fixes “stuck online” bug)
       client.user.setPresence({
         status: state,
-        activities: [
-          {
-            name: activityText || 'Managing server',
-            type: activityType || ActivityType.Playing
-          }
-        ]
+        activities: client.user.presence?.activities || []
       });
 
       return interaction.editReply(`Status set to ${state}`);
     }
 
-    // ===== ACTIVITY + TIMER =====
-    if (commandName === 'activity') {
-      const type = options.getString('type').toLowerCase();
-      const text = options.getString('text');
+    // ================= ACTIVITY + TIMER =================
+    if (cmd === 'activity') {
+      const type = interaction.options.getString('type').toLowerCase();
+      const text = interaction.options.getString('text');
 
       const map = {
         playing: ActivityType.Playing,
@@ -184,12 +180,10 @@ client.on('interactionCreate', async interaction => {
 
       client.user.setPresence({
         status: client.user.presence?.status || 'online',
-        activities: [
-          {
-            name: `${activityText} | 00:00:00`,
-            type: activityType
-          }
-        ]
+        activities: [{
+          name: `${activityText} | 00:00:00`,
+          type: activityType
+        }]
       });
 
       startTimer();
@@ -197,27 +191,28 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Activity timer started');
     }
 
-    // ===== LOGS =====
-    if (commandName === 'logjoins') {
-      const ch = options.getChannel('channel');
+    // ================= LOGS =================
+    if (cmd === 'logjoins') {
+      const ch = interaction.options.getChannel('channel');
       joinLogs[interaction.guild.id] = ch.id;
       return interaction.editReply('Join log set');
     }
 
-    if (commandName === 'logleaves') {
-      const ch = options.getChannel('channel');
+    if (cmd === 'logleaves') {
+      const ch = interaction.options.getChannel('channel');
       leaveLogs[interaction.guild.id] = ch.id;
       return interaction.editReply('Leave log set');
     }
 
-    if (commandName === 'logboosts') {
-      const ch = options.getChannel('channel');
+    if (cmd === 'logboosts') {
+      const ch = interaction.options.getChannel('channel');
       boostLogs[interaction.guild.id] = ch.id;
       return interaction.editReply('Boost log set');
     }
 
   } catch (err) {
     console.error(err);
+
     try {
       if (!interaction.replied) {
         await interaction.editReply('Error occurred');
