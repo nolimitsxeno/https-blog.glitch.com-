@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, REST, Routes, Partials, ActivityType } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
-const fs = require('fs');
 const express = require('express');
+const fs = require('fs');
 
 // ================= SAFETY =================
 process.on('unhandledRejection', console.error);
@@ -18,7 +18,6 @@ app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.MessageContent
@@ -27,14 +26,9 @@ const client = new Client({
 });
 
 // ================= STORAGE =================
-let joinLog = {};
-let leaveLog = {};
-let boostLog = {};
-let autorole = {};
-
-function save(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
+let joinLogs = {};
+let leaveLogs = {};
+let boostLogs = {};
 
 // ================= ACTIVITY TIMER =================
 let activityTimer = null;
@@ -42,6 +36,51 @@ let activityStart = null;
 let activityText = null;
 let activityType = ActivityType.Playing;
 
+// ================= REGISTER COMMANDS =================
+client.once('ready', async () => {
+  console.log(`Logged in as ${client.user.tag}`);
+
+  client.user.setPresence({
+    status: 'online',
+    activities: [{ name: 'Starting...', type: ActivityType.Playing }]
+  });
+
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+
+  await rest.put(Routes.applicationCommands(client.user.id), {
+    body: [
+      { name: 'say', description: 'Send message', options: [{ name: 'text', type: 3, required: true }] },
+
+      { name: 'joinvc', description: 'Join VC' },
+      { name: 'leavevc', description: 'Leave VC' },
+
+      { name: 'dstatus', description: 'Set bot status', options: [
+        { name: 'state', type: 3, required: true }
+      ]},
+
+      { name: 'activity', description: 'Set activity with timer', options: [
+        { name: 'type', type: 3, required: true },
+        { name: 'text', type: 3, required: true }
+      ]},
+
+      { name: 'logjoins', description: 'Set join log', options: [
+        { name: 'channel', type: 7, required: true }
+      ]},
+
+      { name: 'logleaves', description: 'Set leave log', options: [
+        { name: 'channel', type: 7, required: true }
+      ]},
+
+      { name: 'logboosts', description: 'Set boost log', options: [
+        { name: 'channel', type: 7, required: true }
+      ]}
+    ]
+  });
+
+  console.log("Slash commands loaded");
+});
+
+// ================= TIMER FUNCTION =================
 function startTimer() {
   if (activityTimer) clearInterval(activityTimer);
 
@@ -68,51 +107,7 @@ function startTimer() {
   }, 5000);
 }
 
-// ================= READY =================
-client.once('ready', async () => {
-  console.log(`Logged in as ${client.user.tag}`);
-
-  client.user.setPresence({
-    status: 'online',
-    activities: [{ name: 'Starting...', type: ActivityType.Playing }]
-  });
-
-  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-
-  await rest.put(Routes.applicationCommands(client.user.id), {
-    body: [
-      { name: 'say', description: 'Send message', options: [{ name: 'text', type: 3, required: true }] },
-
-      { name: 'joinvc', description: 'Join VC' },
-      { name: 'leavevc', description: 'Leave VC' },
-
-      { name: 'dstatus', description: 'Change bot status', options: [
-        { name: 'state', type: 3, required: true }
-      ]},
-
-      { name: 'activity', description: 'Set activity with timer', options: [
-        { name: 'type', type: 3, required: true },
-        { name: 'text', type: 3, required: true }
-      ]},
-
-      { name: 'logjoins', description: 'Set join log channel', options: [
-        { name: 'channel', type: 7, required: true }
-      ]},
-
-      { name: 'logleaves', description: 'Set leave log channel', options: [
-        { name: 'channel', type: 7, required: true }
-      ]},
-
-      { name: 'logboosts', description: 'Set boost log channel', options: [
-        { name: 'channel', type: 7, required: true }
-      ]}
-    ]
-  });
-
-  console.log("Slash commands loaded");
-});
-
-// ================= INTERACTIONS (FULL FIXED) =================
+// ================= INTERACTIONS =================
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -121,12 +116,12 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName, options } = interaction;
 
-    // ================= SAY =================
+    // ===== SAY =====
     if (commandName === 'say') {
       return interaction.editReply(options.getString('text'));
     }
 
-    // ================= VC JOIN =================
+    // ===== VC JOIN =====
     if (commandName === 'joinvc') {
       const channel = interaction.member.voice.channel;
       if (!channel) return interaction.editReply('Join a VC first');
@@ -140,7 +135,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Joined VC');
     }
 
-    // ================= VC LEAVE =================
+    // ===== VC LEAVE =====
     if (commandName === 'leavevc') {
       const conn = getVoiceConnection(interaction.guild.id);
       if (!conn) return interaction.editReply('Not in VC');
@@ -149,7 +144,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Left VC');
     }
 
-    // ================= STATUS FIX =================
+    // ===== STATUS FIX (IMPORTANT) =====
     if (commandName === 'dstatus') {
       const state = options.getString('state').toLowerCase();
 
@@ -158,15 +153,21 @@ client.on('interactionCreate', async interaction => {
         return interaction.editReply('Use: online / idle / dnd / invisible');
       }
 
+      // FULL REBUILD (fixes Discord ignoring updates)
       client.user.setPresence({
         status: state,
-        activities: client.user.presence?.activities || []
+        activities: [
+          {
+            name: activityText || 'Managing server',
+            type: activityType || ActivityType.Playing
+          }
+        ]
       });
 
       return interaction.editReply(`Status set to ${state}`);
     }
 
-    // ================= ACTIVITY + TIMER =================
+    // ===== ACTIVITY + TIMER =====
     if (commandName === 'activity') {
       const type = options.getString('type').toLowerCase();
       const text = options.getString('text');
@@ -196,31 +197,27 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply('Activity timer started');
     }
 
-    // ================= LOGS =================
+    // ===== LOGS =====
     if (commandName === 'logjoins') {
       const ch = options.getChannel('channel');
-      joinLog[interaction.guild.id] = ch.id;
-      save('join.json', joinLog);
+      joinLogs[interaction.guild.id] = ch.id;
       return interaction.editReply('Join log set');
     }
 
     if (commandName === 'logleaves') {
       const ch = options.getChannel('channel');
-      leaveLog[interaction.guild.id] = ch.id;
-      save('leave.json', leaveLog);
+      leaveLogs[interaction.guild.id] = ch.id;
       return interaction.editReply('Leave log set');
     }
 
     if (commandName === 'logboosts') {
       const ch = options.getChannel('channel');
-      boostLog[interaction.guild.id] = ch.id;
-      save('boost.json', boostLog);
+      boostLogs[interaction.guild.id] = ch.id;
       return interaction.editReply('Boost log set');
     }
 
   } catch (err) {
-    console.error('ERROR:', err);
-
+    console.error(err);
     try {
       if (!interaction.replied) {
         await interaction.editReply('Error occurred');
@@ -231,18 +228,18 @@ client.on('interactionCreate', async interaction => {
 
 // ================= EVENTS =================
 client.on('guildMemberAdd', member => {
-  const ch = joinLog[member.guild.id];
+  const ch = joinLogs[member.guild.id];
   if (ch) member.guild.channels.cache.get(ch)?.send(`${member.user.tag} joined`);
 });
 
 client.on('guildMemberRemove', member => {
-  const ch = leaveLog[member.guild.id];
+  const ch = leaveLogs[member.guild.id];
   if (ch) member.guild.channels.cache.get(ch)?.send(`${member.user.tag} left`);
 });
 
 client.on('guildMemberUpdate', (o, n) => {
   if (!o.premiumSince && n.premiumSince) {
-    const ch = boostLog[n.guild.id];
+    const ch = boostLogs[n.guild.id];
     if (ch) n.guild.channels.cache.get(ch)?.send(`${n.user.tag} boosted 🚀`);
   }
 });
