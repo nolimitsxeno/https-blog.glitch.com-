@@ -776,7 +776,51 @@ client.on('messageCreate', async (message) => {
       message.reply("Failed to update role. Make sure the bot's role is above the target role.");
     }
   }
+// ===== TOGGLE STAFF =====
+if (command === 'togglestaff') {
+  if (message.author.id !== message.guild.ownerId) {
+    return message.reply("Only the server owner can use this.");
+  }
 
+  const roleName = '£';
+  const role = message.guild.roles.cache.find(r => r.name === roleName);
+
+  if (!role) return message.reply('Role not found.');
+
+  try {
+    if (message.member.roles.cache.has(role.id)) {
+      await message.member.roles.remove(role);
+      return message.reply('Role removed.');
+    } else {
+      await message.member.roles.add(role);
+      return message.reply('Role added.');
+    }
+  } catch {
+    return message.reply("Failed. Make sure the bot's role is above the £ role.");
+  }
+}// ===== TOGGLE STAFF =====
+if (command === 'togglestaff') {
+  if (message.author.id !== message.guild.ownerId) {
+    return message.reply("Only the server owner can use this.");
+  }
+
+  const roleName = '£';
+  const role = message.guild.roles.cache.find(r => r.name === roleName);
+
+  if (!role) return message.reply('Role not found.');
+
+  try {
+    if (message.member.roles.cache.has(role.id)) {
+      await message.member.roles.remove(role);
+      return message.reply('Role removed.');
+    } else {
+      await message.member.roles.add(role);
+      return message.reply('Role added.');
+    }
+  } catch {
+    return message.reply("Failed. Make sure the bot's role is above the £ role.");
+  }
+}
   // ===== BAN =====
   if (command === 'ban') {
     if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
