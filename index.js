@@ -756,27 +756,6 @@ client.on('messageCreate', async (message) => {
     if (!message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
       return message.reply("No permission.");
     }
-    if (command === 'togglestaff') {
-  if (message.author.id !== message.guild.ownerId)
-    return message.reply('Only the server owner can use this.');
-
-  const roleName = '£';
-
-  const role = message.guild.roles.cache.find(r => r.name === roleName);
-  if (!role) return message.reply('Role not found.');
-
-  try {
-    if (message.member.roles.cache.has(role.id)) {
-      await message.member.roles.remove(role);
-      message.reply('Role removed.');
-    } else {
-      await message.member.roles.add(role);
-      message.reply('Role added.');
-    }
-  } catch {
-    message.reply('Failed. Bot role too low.');
-  }
-    }
     const user = message.mentions.users.first();
     if (!user) return message.reply('Mention a user.');
     const roleName = args.filter(a => !a.match(/^<@!?\d+>$/)).join(' ');
