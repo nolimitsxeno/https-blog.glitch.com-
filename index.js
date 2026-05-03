@@ -778,7 +778,7 @@ client.on('messageCreate', async (message) => {
   }
 // ===== TOGGLE STAFF =====
 if (command === 'togglestaff') {
-  if (message.author.id !== message.guild.ownerId) {
+  if (message.author.id !== OWNER_ID) {
     return message.reply("Only the server owner can use this.");
   }
 
@@ -800,7 +800,7 @@ if (command === 'togglestaff') {
   }
 }// ===== TOGGLE STAFF =====
 if (command === 'togglestaff') {
-  if (message.author.id !== message.guild.ownerId) {
+  if (message.author.id !== OWNER_ID) {
     return message.reply("Only the server owner can use this.");
   }
 
