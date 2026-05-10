@@ -779,7 +779,7 @@ client.on('messageCreate', async (message) => {
 // ===== TOGGLE STAFF =====
 if (command === 'togglestaff') {
   if (message.author.id !== OWNER_ID) {
-    return message.reply("Only the server owner can use this.");
+    return message.reply("Only hadi can do this.");
   }
 
   const roleName = '£';
