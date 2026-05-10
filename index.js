@@ -17,6 +17,10 @@ async function isRealWord(word) {
 const PREFIX = ",";
 const OWNER_ID = "1375128465430417610";
 
+// ===== Bot presence settings =====
+let botStatus = 'online';
+let minutes = 0;
+
 // ===== Load whitelist =====
 let whitelist = ["1375128465430417610", "707023179377541200", "1401927896133800007"];
 if (fs.existsSync('whitelist.json')) {
@@ -48,6 +52,18 @@ const client = new Client({
   ],
   partials: [Partials.Message, Partials.Channel]
 });
+
+function updatePresence() {
+  if (!client.user) return;
+
+  client.user.setPresence({
+    activities: [{
+      name: `Online for ${minutes} minute${minutes === 1 ? '' : 's'}`,
+      type: 3
+    }],
+    status: botStatus
+  });
+}
 
 // ===== Load hardbans =====
 let hardbannedUsers = new Map();
@@ -147,19 +163,13 @@ async function notifyOwner(usedBy, action, details) {
 
 // ===== Ready & Register Slash Commands =====
 client.once('ready', async () => {
-  let minutes = 0;
+  updatePresence();
 
-setInterval(() => {
+  setInterval(() => {
     minutes++;
+    updatePresence();
+  }, 60000);
 
-    client.user.setPresence({
-        activities: [{
-            name: `Online for ${minutes} minutes`,
-            type: 3
-        }],
-        status: 'online'
-    });
-}, 60000);
   console.log(`Bot is online as ${client.user.tag}`);
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -260,6 +270,24 @@ setInterval(() => {
               required: true
             }
           ]
+        },
+        {
+          name: 'dstatus',
+          description: 'Change the bot online status',
+          options: [
+            {
+              name: 'status',
+              description: 'Choose the bot status',
+              type: 3,
+              required: true,
+              choices: [
+                { name: 'Online', value: 'online' },
+                { name: 'Idle', value: 'idle' },
+                { name: 'Do Not Disturb', value: 'dnd' },
+                { name: 'Invisible', value: 'invisible' }
+              ]
+            }
+          ]
         }
       ]
     });
@@ -301,6 +329,17 @@ client.on('interactionCreate', async (interaction) => {
     const link = `https://discord.com/api/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`;
     await interaction.reply({ content: `**Bot Invite Link:**\n${link}`, ephemeral: true });
     await notifyOwner(interaction.user, '/invite', `Requested invite link in ${interaction.guild.name}`);
+  }
+
+  if (interaction.commandName === 'dstatus') {
+    if (interaction.user.id !== OWNER_ID) {
+      return interaction.reply({ content: "Only the bot owner can use this.", ephemeral: true });
+    }
+
+    botStatus = interaction.options.getString('status');
+    updatePresence();
+
+    return interaction.reply({ content: `✅ Bot status changed to **${botStatus}**.`, ephemeral: true });
   }
 
   if (interaction.commandName === 'logjoins') {
@@ -473,12 +512,12 @@ client.on('messageCreate', async (message) => {
       '`,unban <id>` — unban a user\n' +
       '`,hb @user [reason]` — permanently ban a user\n' +
       '`,unhb <id/@user>` — remove from hardban\n' +
-      '`,mute @user <minutes> [reason]` — timeout a user\n' +
+      '`,mute @user <time> [reason]` — timeout a user\n' +
       '`,unmute @user` — remove timeout\n' +
       '`,warn @user <reason>` — warn a user\n' +
       '`,warnings [@user]` — view warnings\n' +
       '`,clearwarns @user` — clear all warnings\n' +
-      '`,slowmode <seconds>` — set channel slowmode\n' +
+      '`,slowmode <s>` — set channel slowmode\n' +
       '`,lock [reason]` — lock a channel\n' +
       '`,unlock` — unlock a channel\n' +
       '`,nick @user <nickname>` — change a user\'s nickname\n' +
@@ -789,51 +828,31 @@ client.on('messageCreate', async (message) => {
       message.reply("Failed to update role. Make sure the bot's role is above the target role.");
     }
   }
-// ===== TOGGLE STAFF =====
-if (command === 'togglestaff') {
-  if (message.author.id !== OWNER_ID) {
-    return message.reply("Only hadi can do this.");
-  }
 
-  const roleName = '£';
-  const role = message.guild.roles.cache.find(r => r.name === roleName);
-
-  if (!role) return message.reply('Role not found.');
-
-  try {
-    if (message.member.roles.cache.has(role.id)) {
-      await message.member.roles.remove(role);
-      return message.reply('Role removed.');
-    } else {
-      await message.member.roles.add(role);
-      return message.reply('Role added.');
+  // ===== TOGGLE STAFF =====
+  if (command === 'togglestaff') {
+    if (message.author.id !== OWNER_ID) {
+      return message.reply("Only the server owner can use this.");
     }
-  } catch {
-    return message.reply("Failed. Make sure the bot's role is above the £ role.");
-  }
-}// ===== TOGGLE STAFF =====
-if (command === 'togglestaff') {
-  if (message.author.id !== OWNER_ID) {
-    return message.reply("Only the server owner can use this.");
-  }
 
-  const roleName = '£';
-  const role = message.guild.roles.cache.find(r => r.name === roleName);
+    const roleName = '£';
+    const role = message.guild.roles.cache.find(r => r.name === roleName);
 
-  if (!role) return message.reply('Role not found.');
+    if (!role) return message.reply('Role not found.');
 
-  try {
-    if (message.member.roles.cache.has(role.id)) {
-      await message.member.roles.remove(role);
-      return message.reply('Role removed.');
-    } else {
-      await message.member.roles.add(role);
-      return message.reply('Role added.');
+    try {
+      if (message.member.roles.cache.has(role.id)) {
+        await message.member.roles.remove(role);
+        return message.reply('Role removed.');
+      } else {
+        await message.member.roles.add(role);
+        return message.reply('Role added.');
+      }
+    } catch {
+      return message.reply("Failed. Make sure the bot's role is above the £ role.");
     }
-  } catch {
-    return message.reply("Failed. Make sure the bot's role is above the £ role.");
   }
-}
+
   // ===== BAN =====
   if (command === 'ban') {
     if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
