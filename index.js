@@ -58,7 +58,7 @@ function updatePresence() {
 
   client.user.setPresence({
     activities: [{
-      name: `Online for ${minutes} minute${minutes === 1 ? '' : 's'}`,
+      name: `Monitoring servers for ${minutes} minute${minutes === 1 ? '' : 's'}`,
       type: 3
     }],
     status: botStatus
