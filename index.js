@@ -337,6 +337,8 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     botStatus = interaction.options.getString('status');
+client.user.setStatus(botStatus);
+updatePresence();
     updatePresence();
 
     return interaction.reply({ content: `✅ Bot status changed to **${botStatus}**.`, ephemeral: true });
