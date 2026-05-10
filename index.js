@@ -147,6 +147,19 @@ async function notifyOwner(usedBy, action, details) {
 
 // ===== Ready & Register Slash Commands =====
 client.once('ready', async () => {
+  let minutes = 0;
+
+setInterval(() => {
+    minutes++;
+
+    client.user.setPresence({
+        activities: [{
+            name: `Online for ${minutes} minutes`,
+            type: 3
+        }],
+        status: 'online'
+    });
+}, 60000);
   console.log(`Bot is online as ${client.user.tag}`);
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
