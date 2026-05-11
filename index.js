@@ -56,9 +56,24 @@ const client = new Client({
 function updatePresence() {
   if (!client.user) return;
 
+  let text;
+
+  if (minutes < 60) {
+    text = `Online for ${minutes} minute${minutes === 1 ? '' : 's'}`;
+  } else {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+
+    text = `Online for ${hours} hour${hours === 1 ? '' : 's'}`;
+
+    if (mins > 0) {
+      text += ` ${mins} minute${mins === 1 ? '' : 's'}`;
+    }
+  }
+
   client.user.setPresence({
     activities: [{
-      name: `Monitoring servers for ${minutes} minute${minutes === 1 ? '' : 's'}`,
+      name: text,
       type: 3
     }],
     status: botStatus
@@ -337,8 +352,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     botStatus = interaction.options.getString('status');
-client.user.setStatus(botStatus);
-updatePresence();
     updatePresence();
 
     return interaction.reply({ content: `✅ Bot status changed to **${botStatus}**.`, ephemeral: true });
@@ -881,23 +894,74 @@ client.on('messageCreate', async (message) => {
     if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
       return message.reply("No permission.");
     }
-    const user = message.mentions.users.first();
-    if (!user) return message.reply('Mention a user.');
-    if (user.id === message.author.id) return message.reply("You can't hardban yourself.");
-    const member = await message.guild.members.fetch(user.id).catch(() => null);
-    if (member && member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return message.reply("Can't hardban an admin.");
+
+    const firstArg = args[0];
+    if (!firstArg) return message.reply('Mention a user, type a username, or provide a user ID.');
+
+    let userId = null;
+    let user = null;
+
+    const mention = message.mentions.users.first();
+
+    if (mention) {
+      user = mention;
+      userId = mention.id;
+    } else if (/^\d{17,20}$/.test(firstArg)) {
+      userId = firstArg;
+      user = await client.users.fetch(userId).catch(() => null);
+      if (!user) return message.reply("That user ID is not valid.");
+    } else {
+      const searchName = firstArg.toLowerCase();
+
+      const member = message.guild.members.cache.find(m =>
+        m.user.username.toLowerCase() === searchName ||
+        m.user.tag.toLowerCase() === searchName ||
+        m.displayName.toLowerCase() === searchName
+      );
+
+      if (!member) {
+        return message.reply("User not found. Use their user ID if they are not in the server.");
+      }
+
+      user = member.user;
+      userId = user.id;
     }
-    const reason = args.filter(a => !a.match(/^<@!?\d+>$/)).join(' ') || 'No reason';
-    try {
-      await user.send(`You have been banned from **${message.guild.name}** by **${message.author.tag}**. Reason: ${reason}`).catch(() => null);
-      await message.guild.members.ban(user.id, { reason });
-      hardbannedUsers.set(user.id, reason);
-      saveHardbans();
-      await message.channel.send('👍');
-    } catch {
-      message.reply("Hardban failed.");
+
+    if (userId === message.author.id) return message.reply("You can't hardban yourself.");
+
+    const reason = args.slice(1).join(' ') || 'No reason';
+
+    hardbannedUsers.set(userId, reason);
+    saveHardbans();
+
+    const member = await message.guild.members.fetch(userId).catch(() => null);
+
+    if (member) {
+      if (member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        return message.reply("Can't hardban an admin.");
+      }
+
+      await user.send(
+        `You have been hardbanned from **${message.guild.name}**.\n` +
+        `Reason: ${reason}\n` +
+        `DM "hxdisns" to appeal this sanction.`
+      ).catch(() => null);
+
+      await message.guild.members.ban(userId, { reason });
+
+      return message.channel.send(
+        `✅ **${user ? user.tag : userId}** has been hardbanned and banned now.\n` +
+        `**User ID:** ${userId}\n` +
+        `**Reason:** ${reason}`
+      );
     }
+
+    return message.channel.send(
+      `✅ **${user ? user.tag : userId}** has been added to the hardban watchlist.\n` +
+      `They will be DM'd and banned if they join.\n` +
+      `**User ID:** ${userId}\n` +
+      `**Reason:** ${reason}`
+    );
   }
 
   // ===== UNBAN =====
@@ -1263,14 +1327,25 @@ client.on('guildMemberAdd', async (member) => {
     }
   }
 
-  // ===== HARDBAN REBAN =====
+  // ===== HARDBAN WATCHLIST BAN =====
   if (hardbannedUsers.has(member.id)) {
+    const reason = hardbannedUsers.get(member.id) || 'No reason';
+
     try {
-      await member.send(`You have been rehardbanned in **${guild.name}**. DM "hxdisns" to appeal this sanction.`).catch(() => null);
-      await guild.members.ban(member.id);
+      await member.send(
+        `You have been hardbanned from **${guild.name}**.\n` +
+        `Reason: ${reason}\n` +
+        `DM "hxdisns" to appeal this sanction.`
+      ).catch(() => null);
+
+      await guild.members.ban(member.id, { reason });
+
       const channel = guild.channels.cache.find(c => c.name === 'chat' && c.isTextBased());
       if (channel) {
-        channel.send(`${member.user.tag} attempted to rejoin and was automatically re-banned.`);
+        channel.send(
+          `🚫 **${member.user.tag}** joined and was automatically hardbanned.\n` +
+          `**Reason:** ${reason}`
+        );
       }
     } catch (err) {
       console.error(err);
