@@ -19,7 +19,7 @@ const OWNER_ID = "1375128465430417610";
 
 // ===== Bot presence settings =====
 let botStatus = 'online';
-let minutes = 0;
+let startTime = Date.now();
 
 // ===== Load whitelist =====
 let whitelist = ["1375128465430417610", "707023179377541200", "1401927896133800007"];
@@ -48,28 +48,68 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
   ],
   partials: [Partials.Message, Partials.Channel]
+});
+// ===== DM LOGGER =====
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+  if (message.guild) return;
+
+  try {
+    const owner = await client.users.fetch(OWNER_ID);
+
+    let text =
+      `**Bot DM Received**\n` +
+      `**From:** ${message.author.tag} (${message.author.id})\n` +
+      `**Message:** ${message.content || '*No text content*'}`;
+
+    if (message.attachments.size > 0) {
+      text += `\n\n**Attachments:**`;
+      message.attachments.forEach(att => {
+        text += `\n${att.name || 'file'}: ${att.url}`;
+      });
+    }
+
+    if (message.stickers.size > 0) {
+      text += `\n\n**Stickers:**`;
+      message.stickers.forEach(sticker => {
+        text += `\n${sticker.name}`;
+      });
+    }
+
+    if (message.embeds.length > 0) {
+      text += `\n\n**Embeds:** ${message.embeds.length}`;
+      message.embeds.forEach((embed, index) => {
+        if (embed.title) text += `\nEmbed ${index + 1} title: ${embed.title}`;
+        if (embed.description) text += `\nEmbed ${index + 1} description: ${embed.description}`;
+        if (embed.url) text += `\nEmbed ${index + 1} url: ${embed.url}`;
+        if (embed.image?.url) text += `\nEmbed ${index + 1} image: ${embed.image.url}`;
+        if (embed.thumbnail?.url) text += `\nEmbed ${index + 1} thumbnail: ${embed.thumbnail.url}`;
+      });
+    }
+
+    await owner.send(text);
+  } catch (err) {
+    console.error('Failed to forward bot DM:', err);
+  }
 });
 
 function updatePresence() {
   if (!client.user) return;
 
-  let text;
+  const totalSeconds = Math.floor((Date.now() - startTime) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-  if (minutes < 60) {
-    text = `Monitoring servers for ${minutes} minute${minutes === 1 ? '' : 's'}`;
-  } else {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+  let text = 'Online for ';
 
-    text = `Monitoring servers for ${hours} hour${hours === 1 ? '' : 's'}`;
-
-    if (mins > 0) {
-      text += ` ${mins} minute${mins === 1 ? '' : 's'}`;
-    }
-  }
+  if (hours > 0) text += `${hours}h `;
+  if (minutes > 0) text += `${minutes}m `;
+  text += `${seconds}s`;
 
   client.user.setPresence({
     activities: [{
@@ -181,9 +221,8 @@ client.once('ready', async () => {
   updatePresence();
 
   setInterval(() => {
-    minutes++;
     updatePresence();
-  }, 60000);
+  }, 15000);
 
   console.log(`Bot is online as ${client.user.tag}`);
 
