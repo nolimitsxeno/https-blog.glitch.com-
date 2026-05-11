@@ -59,12 +59,12 @@ function updatePresence() {
   let text;
 
   if (minutes < 60) {
-    text = `Online for ${minutes} minute${minutes === 1 ? '' : 's'}`;
+    text = `Monitoring servers for ${minutes} minute${minutes === 1 ? '' : 's'}`;
   } else {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
 
-    text = `Online for ${hours} hour${hours === 1 ? '' : 's'}`;
+    text = `Monitoring servers for ${hours} hour${hours === 1 ? '' : 's'}`;
 
     if (mins > 0) {
       text += ` ${mins} minute${mins === 1 ? '' : 's'}`;
