@@ -105,7 +105,7 @@ function updatePresence() {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  let text = 'Online for ';
+  let text = 'Monitor servers  for ';
 
   if (hours > 0) text += `${hours}h `;
   if (minutes > 0) text += `${minutes}m `;
