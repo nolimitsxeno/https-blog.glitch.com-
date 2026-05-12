@@ -105,7 +105,7 @@ function updatePresence() {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  let text = 'Monitor servers  for ';
+  let text = 'Monitoring servers  for ';
 
   if (hours > 0) text += `${hours}h `;
   if (minutes > 0) text += `${minutes}m `;
@@ -983,7 +983,7 @@ client.on('messageCreate', async (message) => {
       await user.send(
         `You have been hardbanned from **${message.guild.name}**.\n` +
         `Reason: ${reason}\n` +
-        `DM "hxdisns" to appeal this sanction.`
+        `DM "1ny6" to appeal this sanction.`
       ).catch(() => null);
 
       await message.guild.members.ban(userId, { reason });
