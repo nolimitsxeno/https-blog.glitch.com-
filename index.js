@@ -1,3 +1,4 @@
+const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, Partials, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
@@ -15,10 +16,6 @@ async function isRealWord(word) {
 
 const PREFIX = ",";
 const OWNER_ID = "1375128465430417610";
-
-// ===== Bot presence settings =====
-let botStatus = 'online';
-let startTime = Date.now();
 
 // ===== Load whitelist =====
 let whitelist = ["1375128465430417610", "707023179377541200", "1401927896133800007"];
@@ -47,77 +44,10 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages
+    GatewayIntentBits.MessageContent
   ],
   partials: [Partials.Message, Partials.Channel]
 });
-// ===== DM LOGGER =====
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-  if (message.guild) return;
-
-  try {
-    const owner = await client.users.fetch(OWNER_ID);
-
-    let text =
-      `**Bot DM Received**\n` +
-      `**From:** ${message.author.tag} (${message.author.id})\n` +
-      `**Message:** ${message.content || '*No text content*'}`;
-
-    if (message.attachments.size > 0) {
-      text += `\n\n**Attachments:**`;
-      message.attachments.forEach(att => {
-        text += `\n${att.name || 'file'}: ${att.url}`;
-      });
-    }
-
-    if (message.stickers.size > 0) {
-      text += `\n\n**Stickers:**`;
-      message.stickers.forEach(sticker => {
-        text += `\n${sticker.name}`;
-      });
-    }
-
-    if (message.embeds.length > 0) {
-      text += `\n\n**Embeds:** ${message.embeds.length}`;
-      message.embeds.forEach((embed, index) => {
-        if (embed.title) text += `\nEmbed ${index + 1} title: ${embed.title}`;
-        if (embed.description) text += `\nEmbed ${index + 1} description: ${embed.description}`;
-        if (embed.url) text += `\nEmbed ${index + 1} url: ${embed.url}`;
-        if (embed.image?.url) text += `\nEmbed ${index + 1} image: ${embed.image.url}`;
-        if (embed.thumbnail?.url) text += `\nEmbed ${index + 1} thumbnail: ${embed.thumbnail.url}`;
-      });
-    }
-
-    await owner.send(text);
-  } catch (err) {
-    console.error('Failed to forward bot DM:', err);
-  }
-});
-
-function updatePresence() {
-  if (!client.user) return;
-
-  const totalSeconds = Math.floor((Date.now() - startTime) / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  let text = 'Monitoring servers for ';
-
-  if (hours > 0) text += `${hours}h `;
-  if (minutes > 0) text += `${minutes}m `;
-  text += `${seconds}s`;
-
-  client.user.setPresence({
-    activities: [{
-      name: text,
-      type: 3
-    }],
-    status: botStatus
-  });
-}
 
 // ===== Load hardbans =====
 let hardbannedUsers = new Map();
@@ -217,12 +147,6 @@ async function notifyOwner(usedBy, action, details) {
 
 // ===== Ready & Register Slash Commands =====
 client.once('ready', async () => {
-  updatePresence();
-
-  setInterval(() => {
-    updatePresence();
-  }, 15000);
-
   console.log(`Bot is online as ${client.user.tag}`);
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -323,24 +247,6 @@ client.once('ready', async () => {
               required: true
             }
           ]
-        },
-        {
-          name: 'dstatus',
-          description: 'Change the bot online status',
-          options: [
-            {
-              name: 'status',
-              description: 'Choose the bot status',
-              type: 3,
-              required: true,
-              choices: [
-                { name: 'Online', value: 'online' },
-                { name: 'Idle', value: 'idle' },
-                { name: 'Do Not Disturb', value: 'dnd' },
-                { name: 'Invisible', value: 'invisible' }
-              ]
-            }
-          ]
         }
       ]
     });
@@ -382,17 +288,6 @@ client.on('interactionCreate', async (interaction) => {
     const link = `https://discord.com/api/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`;
     await interaction.reply({ content: `**Bot Invite Link:**\n${link}`, ephemeral: true });
     await notifyOwner(interaction.user, '/invite', `Requested invite link in ${interaction.guild.name}`);
-  }
-
-  if (interaction.commandName === 'dstatus') {
-    if (interaction.user.id !== OWNER_ID) {
-      return interaction.reply({ content: "Only the bot owner can use this.", ephemeral: true });
-    }
-
-    botStatus = interaction.options.getString('status');
-    updatePresence();
-
-    return interaction.reply({ content: `✅ Bot status changed to **${botStatus}**.`, ephemeral: true });
   }
 
   if (interaction.commandName === 'logjoins') {
@@ -565,12 +460,12 @@ client.on('messageCreate', async (message) => {
       '`,unban <id>` — unban a user\n' +
       '`,hb @user [reason]` — permanently ban a user\n' +
       '`,unhb <id/@user>` — remove from hardban\n' +
-      '`,mute @user <time> [reason]` — timeout a user\n' +
+      '`,mute @user <minutes> [reason]` — timeout a user\n' +
       '`,unmute @user` — remove timeout\n' +
       '`,warn @user <reason>` — warn a user\n' +
       '`,warnings [@user]` — view warnings\n' +
       '`,clearwarns @user` — clear all warnings\n' +
-      '`,slowmode <s>` — set channel slowmode\n' +
+      '`,slowmode <seconds>` — set channel slowmode\n' +
       '`,lock [reason]` — lock a channel\n' +
       '`,unlock` — unlock a channel\n' +
       '`,nick @user <nickname>` — change a user\'s nickname\n' +
@@ -882,30 +777,6 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // ===== TOGGLE STAFF =====
-  if (command === 'togglestaff') {
-    if (message.author.id !== OWNER_ID) {
-      return message.reply("Only the server owner can use this.");
-    }
-
-    const roleName = '£';
-    const role = message.guild.roles.cache.find(r => r.name === roleName);
-
-    if (!role) return message.reply('Role not found.');
-
-    try {
-      if (message.member.roles.cache.has(role.id)) {
-        await message.member.roles.remove(role);
-        return message.reply('Role removed.');
-      } else {
-        await message.member.roles.add(role);
-        return message.reply('Role added.');
-      }
-    } catch {
-      return message.reply("Failed. Make sure the bot's role is above the £ role.");
-    }
-  }
-
   // ===== BAN =====
   if (command === 'ban') {
     if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
@@ -932,74 +803,23 @@ client.on('messageCreate', async (message) => {
     if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
       return message.reply("No permission.");
     }
-
-    const firstArg = args[0];
-    if (!firstArg) return message.reply('Mention a user, type a username, or provide a user ID.');
-
-    let userId = null;
-    let user = null;
-
-    const mention = message.mentions.users.first();
-
-    if (mention) {
-      user = mention;
-      userId = mention.id;
-    } else if (/^\d{17,20}$/.test(firstArg)) {
-      userId = firstArg;
-      user = await client.users.fetch(userId).catch(() => null);
-      if (!user) return message.reply("That user ID is not valid.");
-    } else {
-      const searchName = firstArg.toLowerCase();
-
-      const member = message.guild.members.cache.find(m =>
-        m.user.username.toLowerCase() === searchName ||
-        m.user.tag.toLowerCase() === searchName ||
-        m.displayName.toLowerCase() === searchName
-      );
-
-      if (!member) {
-        return message.reply("User not found. Use their user ID if they are not in the server.");
-      }
-
-      user = member.user;
-      userId = user.id;
+    const user = message.mentions.users.first();
+    if (!user) return message.reply('Mention a user.');
+    if (user.id === message.author.id) return message.reply("You can't hardban yourself.");
+    const member = await message.guild.members.fetch(user.id).catch(() => null);
+    if (member && member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return message.reply("Can't hardban an admin.");
     }
-
-    if (userId === message.author.id) return message.reply("You can't hardban yourself.");
-
-    const reason = args.slice(1).join(' ') || 'No reason';
-
-    hardbannedUsers.set(userId, reason);
-    saveHardbans();
-
-    const member = await message.guild.members.fetch(userId).catch(() => null);
-
-    if (member) {
-      if (member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        return message.reply("Can't hardban an admin.");
-      }
-
-      await user.send(
-        `You have been hardbanned from **${message.guild.name}**.\n` +
-        `Reason: ${reason}\n` +
-        `DM "1ny6" to appeal this sanction.`
-      ).catch(() => null);
-
-      await message.guild.members.ban(userId, { reason });
-
-      return message.channel.send(
-        `✅ **${user ? user.tag : userId}** has been hardbanned and banned now.\n` +
-        `**User ID:** ${userId}\n` +
-        `**Reason:** ${reason}`
-      );
+    const reason = args.filter(a => !a.match(/^<@!?\d+>$/)).join(' ') || 'No reason';
+    try {
+      await user.send(`You have been banned from **${message.guild.name}** by **${message.author.tag}**. Reason: ${reason}`).catch(() => null);
+      await message.guild.members.ban(user.id, { reason });
+      hardbannedUsers.set(user.id, reason);
+      saveHardbans();
+      await message.channel.send('👍');
+    } catch {
+      message.reply("Hardban failed.");
     }
-
-    return message.channel.send(
-      `✅ **${user ? user.tag : userId}** has been added to the hardban watchlist.\n` +
-      `They will be DM'd and banned if they join.\n` +
-      `**User ID:** ${userId}\n` +
-      `**Reason:** ${reason}`
-    );
   }
 
   // ===== UNBAN =====
@@ -1365,25 +1185,14 @@ client.on('guildMemberAdd', async (member) => {
     }
   }
 
-  // ===== HARDBAN WATCHLIST BAN =====
+  // ===== HARDBAN REBAN =====
   if (hardbannedUsers.has(member.id)) {
-    const reason = hardbannedUsers.get(member.id) || 'No reason';
-
     try {
-      await member.send(
-        `You have been hardbanned from **${guild.name}**.\n` +
-        `Reason: ${reason}\n` +
-        `DM "hxdisns" to appeal this sanction.`
-      ).catch(() => null);
-
-      await guild.members.ban(member.id, { reason });
-
+      await member.send(`You have been rehardbanned in **${guild.name}**. DM "hxdisns" to appeal this sanction.`).catch(() => null);
+      await guild.members.ban(member.id);
       const channel = guild.channels.cache.find(c => c.name === 'chat' && c.isTextBased());
       if (channel) {
-        channel.send(
-          `🚫 **${member.user.tag}** joined and was automatically hardbanned.\n` +
-          `**Reason:** ${reason}`
-        );
+        channel.send(`${member.user.tag} attempted to rejoin and was automatically re-banned.`);
       }
     } catch (err) {
       console.error(err);
