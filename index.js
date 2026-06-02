@@ -1,3 +1,16 @@
+const {
+  Client,
+  GatewayIntentBits,
+  PermissionsBitField,
+  REST,
+  Routes,
+  Partials,
+  EmbedBuilder
+} = require('discord.js');
+
+const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
