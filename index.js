@@ -918,6 +918,39 @@ client.on('messageCreate', async (message) => {
       return message.reply("Failed. Make sure the bot's role is above the £ role.");
     }
   }
+// ===== VERIFY =====
+if (command === 'verify') {
+  if (!message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+    return message.reply("You do not have permission to use this command.");
+  }
+
+  const member = message.mentions.members.first();
+  if (!member) {
+    return message.reply("Mention a user to verify.");
+  }
+
+  const unverifiedRole = message.guild.roles.cache.get("1514951121762914324");
+  const verifiedRole = message.guild.roles.cache.get("1482292139366023310");
+
+  if (!verifiedRole || !unverifiedRole) {
+    return message.reply("One or more roles could not be found.");
+  }
+
+  try {
+    if (member.roles.cache.has(unverifiedRole.id)) {
+      await member.roles.remove(unverifiedRole);
+    }
+
+    if (!member.roles.cache.has(verifiedRole.id)) {
+      await member.roles.add(verifiedRole);
+    }
+
+    message.channel.send(`${member} has been verified.`);
+  } catch (err) {
+    console.error(err);
+    message.reply("Failed to verify user. Make sure the bot role is above both roles.");
+  }
+}
 
   // ===== BAN =====
   if (command === 'ban') {
