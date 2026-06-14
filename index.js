@@ -539,7 +539,7 @@ client.on('messageCreate', async (message) => {
   const command = args.shift().toLowerCase();
 
   if (!whitelist.includes(message.author.id)) {
-    return message.reply("You do not have permission to use this bot.");
+    return message.reply("Get whitelisted first, loser.");
   }
 
   // ===== Log command usage to owner =====
