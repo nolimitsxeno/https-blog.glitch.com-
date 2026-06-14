@@ -37,7 +37,6 @@ let botStatus = 'online';
 let startTime = Date.now();
 
 // ===== Load whitelist =====
-let whitelist = ["1375128465430417610", "707023179377541200", "1401927896133800007"];
 if (fs.existsSync('whitelist.json')) {
   whitelist = JSON.parse(fs.readFileSync('whitelist.json'));
 } else {
