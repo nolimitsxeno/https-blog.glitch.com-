@@ -1,3 +1,13 @@
+const fs = require('fs');
+
+let whitelist = [];
+
+if (fs.existsSync('./whitelist.json')) {
+  whitelist = JSON.parse(fs.readFileSync('./whitelist.json', 'utf8'));
+}
+function saveWhitelist() {
+  fs.writeFileSync('./whitelist.json', JSON.stringify(whitelist, null, 2));
+}
 const {
   Client,
   GatewayIntentBits,
@@ -118,7 +128,7 @@ function updatePresence() {
 
   if (hours > 0) text += `${hours}h `;
   if (minutes > 0) text += `${minutes}m `;
-  text += `${seconds}s`;
+  
 
   client.user.setPresence({
     activities: [{
