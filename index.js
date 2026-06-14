@@ -11,9 +11,6 @@ const {
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
-const fs = require('fs');
-const http = require('http');
-const https = require('https');
 
 async function isRealWord(word) {
   return new Promise((resolve) => {
