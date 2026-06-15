@@ -1477,8 +1477,7 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
         await member.roles.add(role);
 
         if (logChannel) {
-          logChannel.send(`${member.user.tag} **(Thank you -)** **for repping /ch1p!** Enjoy your pic & gif perms <:smileheart:123456789012345678>`);
-        }
+logChannel.send(`${member.user.tag} **(Thank you -)** **for repping /ch1p!** Enjoy your pic & gif perms <:smileheart:1516033902915879023>`);        }
       }
     } else {
       if (member.roles.cache.has(role.id)) {
