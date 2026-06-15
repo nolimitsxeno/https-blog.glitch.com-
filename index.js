@@ -544,6 +544,24 @@ client.on('messageCreate', async (message) => {
 if (message.content === `${PREFIX}r`) {
   return message.channel.send("**hdi's profile** https://www.roblox.com/users/10084489343/profile");
 }
+if (message.content.startsWith(`${PREFIX}role`)) {
+  const args = message.content.split(' ').slice(1);
+
+  const member = message.mentions.members.first();
+  if (!member) return message.reply("Mention a user.");
+
+  const roleName = args.slice(1).join(' ');
+  if (!roleName) return message.reply("Specify a role name.");
+
+  const role = message.guild.roles.cache.find(r =>
+    r.name.toLowerCase() === roleName.toLowerCase()
+  );
+
+  if (!role) return message.reply("Role not found.");
+
+  await member.roles.add(role);
+  return message.channel.send(`✅ Gave **${role.name}** to ${member.user.tag}`);
+}
   const args = message.content.slice(PREFIX.length).trim().split(' ');
   const command = args.shift().toLowerCase();
 
