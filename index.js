@@ -1478,8 +1478,8 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
 
         if (logChannel) {
           logChannel.send(
-            `${member.user.tag} **(Thank you)** for repping /ch1p! Enjoy your pic & gif perms <:smileheart:1516033902915879023>')}`
-          );
+  `${member.user.tag} **(Thank you)** for repping /ch1p! Enjoy your pic & gif perms <:smileheart:1516033902915879023>`
+);
         }
       }
     } else {
