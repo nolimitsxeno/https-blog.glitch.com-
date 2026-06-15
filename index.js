@@ -546,7 +546,23 @@ if (message.content === `${PREFIX}r`) {
 }
 if (message.content.startsWith(`${PREFIX}role`)) {
   const args = message.content.split(' ').slice(1);
+const member = message.mentions.members.first();
+if (!member) return message.reply("Mention a user.");
 
+const roleInput = args.slice(1).join(' ');
+if (!roleInput) return message.reply("Specify a role.");
+
+let role =
+  message.mentions.roles.first() ||
+  message.guild.roles.cache.get(roleInput) ||
+  message.guild.roles.cache.find(r =>
+    r.name.toLowerCase() === roleInput.toLowerCase()
+  );
+
+if (!role) return message.reply("Role not found.");
+
+await member.roles.add(role);
+return message.channel.send(`✅ Gave **${role.name}** to ${member.user.tag}`);
   const member = message.mentions.members.first();
   if (!member) return message.reply("Mention a user.");
 
