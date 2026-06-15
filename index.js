@@ -541,7 +541,9 @@ client.on('interactionCreate', async (interaction) => {
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
   if (!message.content.startsWith(PREFIX)) return;
-
+if (message.content === `${PREFIX}r`) {
+  return message.channel.send("**hdi's profile** https://www.roblox.com/users/10084489343/profile");
+}
   const args = message.content.slice(PREFIX.length).trim().split(' ');
   const command = args.shift().toLowerCase();
 
