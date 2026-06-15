@@ -7,9 +7,14 @@ let whitelist = [];
 if (fs.existsSync('./whitelist.json')) {
   whitelist = JSON.parse(fs.readFileSync('./whitelist.json', 'utf8'));
 }
+
 function saveWhitelist() {
   fs.writeFileSync('./whitelist.json', JSON.stringify(whitelist, null, 2));
 }
+
+const ROLE_ID = "1482292139500113966";
+const LOG_CHANNEL_ID = "1515751091520672035";
+
 const {
   Client,
   GatewayIntentBits,
@@ -65,7 +70,9 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.GuildPresences
+    
   ],
   partials: [Partials.Message, Partials.Channel]
 });
@@ -1449,6 +1456,43 @@ client.on('reconnecting', () => console.log('Bot reconnecting...'));
 
 process.on('unhandledRejection', err => console.error('Unhandled promise rejection:', err));
 process.on('uncaughtException', err => console.error('Uncaught exception:', err));
+client.on('presenceUpdate', async (oldPresence, newPresence) => {
+  try {
+    if (!newPresence || !newPresence.member) return;
 
+    const member = newPresence.member;
+
+    const role = member.guild.roles.cache.get(ROLE_ID);
+    const logChannel = member.guild.channels.cache.get(LOG_CHANNEL_ID);
+
+    if (!role) return;
+
+    const hasCh1p = newPresence.activities?.some(a =>
+      a.type === 4 &&
+      a.state?.toLowerCase().includes('/ch1p')
+    );
+
+    if (hasCh1p) {
+      if (!member.roles.cache.has(role.id)) {
+        await member.roles.add(role);
+
+        if (logChannel) {
+          logChannel.send(`📢 ${member.user.tag} is now repping /ch1p and got pic/gif perms`);
+        }
+      }
+    } else {
+      if (member.roles.cache.has(role.id)) {
+        await member.roles.remove(role);
+
+        if (logChannel) {
+          logChannel.send(`⚠️ ${member.user.tag} stopped repping /ch1p`);
+        }
+      }
+    }
+
+  } catch (err) {
+    console.error("ch1p system error:", err);
+  }
+});
 // ===== LOGIN =====
 client.login(process.env.TOKEN);
