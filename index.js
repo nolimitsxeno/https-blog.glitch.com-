@@ -692,7 +692,7 @@ client.on('interactionCreate', async (interaction) => {
       interaction.options.getString('text');
 
     await interaction.reply({
-      content: '✅',
+      content: 'âœ…',
       ephemeral: true
     });
 
@@ -750,7 +750,7 @@ client.on('interactionCreate', async (interaction) => {
 
     return interaction.reply({
       content:
-        `✅ Bot status changed to **${botStatus}**.`,
+        `âœ… Bot status changed to **${botStatus}**.`,
       ephemeral: true
     });
   }
@@ -793,7 +793,7 @@ client.on('interactionCreate', async (interaction) => {
 
     return interaction.reply({
       content:
-        `✅ Join logs will be sent to ${channel}.`,
+        `âœ… Join logs will be sent to ${channel}.`,
       ephemeral: true
     });
   }
@@ -836,7 +836,7 @@ client.on('interactionCreate', async (interaction) => {
 
     return interaction.reply({
       content:
-        `✅ Leave logs will be sent to ${channel}.`,
+        `âœ… Leave logs will be sent to ${channel}.`,
       ephemeral: true
     });
   }
@@ -879,7 +879,7 @@ client.on('interactionCreate', async (interaction) => {
 
     return interaction.reply({
       content:
-        `✅ Boost logs will be sent to ${channel}.`,
+        `âœ… Boost logs will be sent to ${channel}.`,
       ephemeral: true
     });
   }
@@ -922,7 +922,7 @@ client.on('interactionCreate', async (interaction) => {
 
     return interaction.reply({
       content:
-        `✅ The bot will now say **Hello guys!** in ${channel} every 12 hours.`,
+        `âœ… The bot will now say **Hello guys!** in ${channel} every 12 hours.`,
       ephemeral: true
     });
   }
@@ -1044,19 +1044,19 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.editReply({
         content:
-          `✅ DM sent to **${target.tag}**.`
+          `âœ… DM sent to **${target.tag}**.`
       });
 
       await notifyOwner(
         interaction.user,
         '/dm',
-        `Sent DM to ${target.tag} (${target.id}): "${msg}" — in ${interaction.guild.name}`
+        `Sent DM to ${target.tag} (${target.id}): "${msg}" â€” in ${interaction.guild.name}`
       );
 
     } catch (error) {
       await interaction.editReply({
         content:
-          `❌ Could not DM **${target.tag}**. They may have DMs disabled.`
+          `âŒ Could not DM **${target.tag}**. They may have DMs disabled.`
       });
     }
 
@@ -1101,7 +1101,7 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.reply({
       content:
-        `✅ Autorole set! New members will automatically receive the **${role.name}** role.`,
+        `âœ… Autorole set! New members will automatically receive the **${role.name}** role.`,
       ephemeral: true
     });
 
@@ -1171,32 +1171,32 @@ client.on('messageCreate', async (message) => {
   if (command === 'help') {
     return message.reply(
       '**Commands:**\n' +
-      '`,ping` — check bot latency\n' +
-      '`,userinfo [@user]` — show user info\n' +
-      '`,avatar [@user]` — show avatar\n' +
-      '`,serverinfo` — show server info\n' +
-      '`,say <text>` — make bot say something\n' +
-      '`,purge <amount>` — delete messages (max 100)\n' +
-      '`,kick @user [reason]` — kick a user\n' +
-      '`,ban @user [reason]` — ban a user\n' +
-      '`,unban <id>` — unban a user\n' +
-      '`,hb @user [reason]` — permanently ban a user\n' +
-      '`,unhb <id/@user>` — remove from hardban\n' +
-      '`,mute @user <time> [reason]` — timeout a user\n' +
-      '`,unmute @user` — remove timeout\n' +
-      '`,warn @user <reason>` — warn a user\n' +
-      '`,warnings [@user]` — view warnings\n' +
-      '`,clearwarns @user` — clear warnings\n' +
-      '`,slowmode <seconds>` — set channel slowmode\n' +
-      '`,lock [reason]` — lock a channel\n' +
-      '`,unlock` — unlock a channel\n' +
-      '`,nick @user <nickname>` — change nickname\n' +
-      '`,fn @user <nickname>` — force-lock nickname\n' +
-      '`,fnc @user` — remove forced nickname\n' +
-      '`,role @user <role>` — add/remove a role\n' +
-      '`,togglestaff` — toggle the £ role\n' +
-      '`,verify @user` — verify a user\n' +
-      '`,whitelist @user` — whitelist a user (owner only)'
+      '`,ping` â€” check bot latency\n' +
+      '`,userinfo [@user]` â€” show user info\n' +
+      '`,avatar [@user]` â€” show avatar\n' +
+      '`,serverinfo` â€” show server info\n' +
+      '`,say <text>` â€” make bot say something\n' +
+      '`,purge <amount>` â€” delete messages (max 100)\n' +
+      '`,kick @user [reason]` â€” kick a user\n' +
+      '`,ban @user [reason]` â€” ban a user\n' +
+      '`,unban <id>` â€” unban a user\n' +
+      '`,hb @user [reason]` â€” permanently ban a user\n' +
+      '`,unhb <id/@user>` â€” remove from hardban\n' +
+      '`,mute @user <time> [reason]` â€” timeout a user\n' +
+      '`,unmute @user` â€” remove timeout\n' +
+      '`,warn @user <reason>` â€” warn a user\n' +
+      '`,warnings [@user]` â€” view warnings\n' +
+      '`,clearwarns @user` â€” clear warnings\n' +
+      '`,slowmode <seconds>` â€” set channel slowmode\n' +
+      '`,lock [reason]` â€” lock a channel\n' +
+      '`,unlock` â€” unlock a channel\n' +
+      '`,nick @user <nickname>` â€” change nickname\n' +
+      '`,fn @user <nickname>` â€” force-lock nickname\n' +
+      '`,fnc @user` â€” remove forced nickname\n' +
+      '`,role @user <role>` â€” add/remove a role\n' +
+      '`,togglestaff` â€” toggle the Â£ role\n' +
+      '`,verify @user` â€” verify a user\n' +
+      '`,whitelist @user` â€” whitelist a user (owner only)'
     );
   }
 
@@ -1555,7 +1555,7 @@ client.on('messageCreate', async (message) => {
     const list = userWarnings
       .map(
         (warning, index) =>
-          `${index + 1}. **${warning.reason}** — by ${warning.by} on ${warning.date}`
+          `${index + 1}. **${warning.reason}** â€” by ${warning.by} on ${warning.date}`
       )
       .join('\n');
 
@@ -1652,7 +1652,7 @@ client.on('messageCreate', async (message) => {
       );
 
       return message.channel.send(
-        `🔒 Channel locked. Reason: ${reason}`
+        `ðŸ”’ Channel locked. Reason: ${reason}`
       );
 
     } catch (err) {
@@ -1683,7 +1683,7 @@ client.on('messageCreate', async (message) => {
       );
 
       return message.channel.send(
-        "🔓 Channel unlocked."
+        "ðŸ”“ Channel unlocked."
       );
 
     } catch (err) {
@@ -1969,7 +1969,7 @@ client.on('messageCreate', async (message) => {
 
     const role =
       message.guild.roles.cache.find(
-        r => r.name === '£'
+        r => r.name === 'Â£'
       );
 
     if (!role) {
@@ -1983,7 +1983,7 @@ client.on('messageCreate', async (message) => {
       message.guild.members.me.roles.highest.position
     ) {
       return message.reply(
-        "I can't manage the £ role because it is higher than or equal to my highest role."
+        "I can't manage the Â£ role because it is higher than or equal to my highest role."
       );
     }
 
@@ -2008,7 +2008,7 @@ client.on('messageCreate', async (message) => {
       console.error("Toggle staff error:", err);
 
       return message.reply(
-        "Failed. Make sure the bot's role is above the £ role."
+        "Failed. Make sure the bot's role is above the Â£ role."
       );
     }
   }
@@ -2312,14 +2312,14 @@ client.on('messageCreate', async (message) => {
       }
 
       return message.channel.send(
-        `✅ **${user.tag}** has been hardbanned and banned now.\n` +
+        `âœ… **${user.tag}** has been hardbanned and banned now.\n` +
         `**User ID:** ${userId}\n` +
         `**Reason:** ${reason}`
       );
     }
 
     return message.channel.send(
-      `✅ **${user?.tag || userId}** has been added to the hardban watchlist.\n` +
+      `âœ… **${user?.tag || userId}** has been added to the hardban watchlist.\n` +
       `They will be banned automatically if they join.\n` +
       `**User ID:** ${userId}\n` +
       `**Reason:** ${reason}`
@@ -2467,7 +2467,7 @@ client.on('messageCreate', async (message) => {
         }
       );
 
-      return message.channel.send(`🔒 Channel locked. Reason: ${reason}`);
+      return message.channel.send(`ðŸ”’ Channel locked. Reason: ${reason}`);
     } catch {
       return message.reply("Failed to lock channel.");
     }
@@ -2487,7 +2487,7 @@ client.on('messageCreate', async (message) => {
         }
       );
 
-      return message.channel.send("🔓 Channel unlocked.");
+      return message.channel.send("ðŸ”“ Channel unlocked.");
     } catch {
       return message.reply("Failed to unlock channel.");
     }
@@ -2681,20 +2681,20 @@ client.on('messageCreate', async (message) => {
 
     try {
       // Toggle:
-      // If they already have the role → remove it.
-      // If they don't → add it.
+      // If they already have the role â†’ remove it.
+      // If they don't â†’ add it.
       if (targetMember.roles.cache.has(role.id)) {
         await targetMember.roles.remove(role);
 
         return message.channel.send(
-          `➖ Removed **${role.name}** from **${targetUser.tag}**.`
+          `âž– Removed **${role.name}** from **${targetUser.tag}**.`
         );
       }
 
       await targetMember.roles.add(role);
 
       return message.channel.send(
-        `➕ Added **${role.name}** to **${targetUser.tag}**.`
+        `âž• Added **${role.name}** to **${targetUser.tag}**.`
       );
     } catch (err) {
       console.error("Role command error:", err);
@@ -2711,7 +2711,7 @@ client.on('messageCreate', async (message) => {
       return message.reply("Only the bot owner can use this.");
     }
 
-    const roleName = '£';
+    const roleName = 'Â£';
     const role = message.guild.roles.cache.find(
       r => r.name === roleName
     );
@@ -2724,7 +2724,7 @@ client.on('messageCreate', async (message) => {
       role.position >= message.guild.members.me.roles.highest.position
     ) {
       return message.reply(
-        "I can't manage the £ role because it is equal to or higher than my highest role."
+        "I can't manage the Â£ role because it is equal to or higher than my highest role."
       );
     }
 
@@ -2738,7 +2738,7 @@ client.on('messageCreate', async (message) => {
       return message.reply("Role added.");
     } catch {
       return message.reply(
-        "Failed. Make sure the bot's role is above the £ role."
+        "Failed. Make sure the bot's role is above the Â£ role."
       );
     }
   }
@@ -2923,14 +2923,14 @@ client.on('messageCreate', async (message) => {
       }
 
       return message.channel.send(
-        `✅ **${user.tag}** has been hardbanned and banned now.\n` +
+        `âœ… **${user.tag}** has been hardbanned and banned now.\n` +
         `**User ID:** ${userId}\n` +
         `**Reason:** ${reason}`
       );
     }
 
     return message.channel.send(
-      `✅ **${user ? user.tag : userId}** has been added to the hardban watchlist.\n` +
+      `âœ… **${user ? user.tag : userId}** has been added to the hardban watchlist.\n` +
       `They will be DM'd and banned if they join.\n` +
       `**User ID:** ${userId}\n` +
       `**Reason:** ${reason}`
@@ -3047,7 +3047,7 @@ client.on('messageCreate', async (message) => {
         }
       )
       .setFooter({
-        text: `Message Deleted • User ID: ${userId}`
+        text: `Message Deleted â€¢ User ID: ${userId}`
       })
       .setTimestamp();
 
@@ -3070,11 +3070,11 @@ client.on('messageCreate', async (message) => {
       for (const [, attachment] of (message.attachments || [])) {
         if (!attachment.contentType?.startsWith('image/')) {
           await logChannel.send({
-            content: `📎 Deleted file from **${tag}**:`,
+            content: `ðŸ“Ž Deleted file from **${tag}**:`,
             files: [attachment.url]
           }).catch(async () => {
             await logChannel.send(
-              `📎 Deleted file from **${tag}** ` +
+              `ðŸ“Ž Deleted file from **${tag}** ` +
               `(could not repost): ${attachment.url}`
             );
           });
@@ -3190,7 +3190,7 @@ client.on('messageCreate', async (message) => {
             .catch(() => null);
 
           if (msg) {
-            await msg.react('❤️').catch(() => {});
+            await msg.react('â¤ï¸').catch(() => {});
           }
         }
       }
@@ -3270,7 +3270,7 @@ client.on('messageCreate', async (message) => {
           .send({
             content:
               `Welcome to **${guild.name}**, ` +
-              `<@${member.id}>! 🎉`,
+              `<@${member.id}>! ðŸŽ‰`,
             embeds: [embed]
           })
           .catch(() => {});
@@ -3323,7 +3323,7 @@ client.on('messageCreate', async (message) => {
 
         if (channel) {
           await channel.send(
-            `🚫 **${member.user.tag}** joined and ` +
+            `ðŸš« **${member.user.tag}** joined and ` +
             `was automatically hardbanned.\n` +
             `**Reason:** ${reason}`
           );
@@ -3406,7 +3406,7 @@ client.on('messageCreate', async (message) => {
 
           if (logChannel) {
             await logChannel.send(
-              `⚠️ ${member.user.tag} stopped repping /ch1p`
+              `âš ï¸ ${member.user.tag} stopped repping /ch1p`
             );
           }
         }
