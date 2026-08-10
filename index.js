@@ -1873,25 +1873,48 @@ client.on('messageCreate', async (message) => {
      */
 
     const mentionedRole =
-      message.mentions.roles.first();
+  message.mentions.roles.first();
 
-    const roleInput = args
-      .filter(arg => !/^<@!?\d+>$/.test(arg))
-      .join(' ')
-      .trim();
+const roleInput = args
+  .filter(arg => !/^<@!?\d+>$/.test(arg))
+  .filter(arg => !/^<@&\d+>$/.test(arg))
+  .join(' ')
+  .trim();
 
-    if (!mentionedRole && !roleInput) {
-      return message.reply(
-        "Specify a role."
-      );
-    }
+if (!mentionedRole && !roleInput) {
+  return message.reply(
+    "Specify a role."
+  );
+}
 
-    let role = mentionedRole;
+let role = mentionedRole;
 
-    if (!role && /^\d{17,20}$/.test(roleInput)) {
-      role =
-        message.guild.roles.cache.get(roleInput);
-    }
+// If a role was pinged, use the actual role.
+if (mentionedRole) {
+  role = mentionedRole;
+}
+
+// If no role was pinged, allow a role ID.
+if (!role && /^\d{17,20}$/.test(roleInput)) {
+  role =
+    message.guild.roles.cache.get(roleInput);
+}
+
+// If no role ID was provided, allow an exact role name.
+if (!role && roleInput) {
+  role =
+    message.guild.roles.cache.find(
+      r =>
+        r.name.toLowerCase() ===
+        roleInput.toLowerCase()
+    );
+}
+
+if (!role) {
+  return message.reply(
+    `Role "${roleInput}" not found.`
+  );
+}
 
     if (!role) {
       role =
