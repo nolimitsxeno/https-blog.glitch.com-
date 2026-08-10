@@ -2426,7 +2426,6 @@ client.on('messageCreate', async (message) => {
       "User un-hardbanned."
     );
   }
-});
   // ===== SLOWMODE =====
   if (command === 'slowmode') {
     if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
